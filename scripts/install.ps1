@@ -204,11 +204,17 @@ function Invoke-Install {
     }
 
     Write-Step 'Installing starship'
-    Install-Tool -Name 'starship' -Installer {
-        winget install --id Starship.Starship --accept-source-agreements --accept-package-agreements
-        if ($LASTEXITCODE -ne 0) {
-            throw 'winget failed. Install starship manually, e.g. cargo install starship.'
+    # A failed starship install must not abort the run: the link, the
+    # environment variable and the git hook still below are all useful
+    # without it, and a half-configured machine is worse than a warned one.
+    try {
+        Install-Tool -Name 'starship' -Installer {
+            winget install --id Starship.Starship --accept-source-agreements --accept-package-agreements
+            if ($LASTEXITCODE -ne 0) { throw "winget exited $LASTEXITCODE" }
         }
+    } catch {
+        Write-Warn "starship could not be installed ($($_.Exception.Message))."
+        Write-Warn 'Install it manually, e.g. cargo install starship — without it the first statusline row stays empty.'
     }
 
     $plugins = @(Get-EnabledPlugin -SettingsPath (Join-Path $script:RepoRoot 'settings.json'))
@@ -218,9 +224,12 @@ function Invoke-Install {
         Where-Object { $_ } | Select-Object -Unique)
     foreach ($market in $markets) {
         if ($PSCmdlet.ShouldProcess($market, 'add marketplace')) {
-            # Already registered is not worth aborting the run for.
-            claude plugin marketplace add $market 2>&1 | Out-Null
-            Write-Done $market
+            # Already registered is not worth aborting the run for, but a
+            # genuine failure must not be reported as success — this is the
+            # one step whose outcome the closing summary cannot reveal.
+            $output = claude plugin marketplace add $market 2>&1
+            if ($LASTEXITCODE -eq 0) { Write-Done $market }
+            else { Write-Warn "could not add $market : $output" }
         }
     }
 
@@ -231,8 +240,9 @@ function Invoke-Install {
             continue
         }
         if ($PSCmdlet.ShouldProcess($plugin, 'install plugin')) {
-            claude plugin install $plugin --scope user 2>&1 | Out-Null
-            Write-Done $plugin
+            $output = claude plugin install $plugin --scope user 2>&1
+            if ($LASTEXITCODE -eq 0) { Write-Done $plugin }
+            else { Write-Warn "could not install $plugin : $output" }
         }
     }
 

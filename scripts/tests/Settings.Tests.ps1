@@ -34,4 +34,18 @@ Describe 'settings.json' {
         $script:Settings.statusLine.type | Should -Be 'command'
         $script:Settings.statusLine.command | Should -Be 'cship'
     }
+
+    It 'hardcodes no account-specific path' {
+        # The entire point of the repo is that a second PC gets the same
+        # configuration. A path under one account's home directory silently
+        # does nothing on any other account, and nothing would report it.
+        $raw = Get-Content (Join-Path $script:RepoRoot 'settings.json') -Raw
+        $raw | Should -Not -Match '(?i)C:\\\\Users\\\\'
+    }
+
+    It 'resolves the SessionStart hook relative to the running user' {
+        $command = $script:Settings.hooks.SessionStart[0].hooks[0].command
+        $command | Should -Match '\$HOME'
+        $command | Should -Match 'write-cc-version\.ps1'
+    }
 }

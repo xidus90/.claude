@@ -43,6 +43,23 @@ Describe 'global CLAUDE.md' {
     }
 }
 
+Describe 'statusline config layout' {
+    It 'keeps starship top-level keys ahead of the first section' {
+        # TOML binds a bare key to the section above it. Move `format` below
+        # a [cship.*] header and the file either duplicates a key or hands
+        # starship nothing — either way the first statusline row dies. The
+        # README warns about this; this is the check that enforces it.
+        $lines = Get-Content (Join-Path $script:RepoRoot 'statusline\cship.toml')
+        $firstSection = ($lines | Select-String -Pattern '^\s*\[' | Select-Object -First 1).LineNumber
+        foreach ($key in 'format', 'add_newline') {
+            $hit = $lines | Select-String -Pattern "^\s*$key\s*=" | Select-Object -First 1
+            if ($hit) {
+                $hit.LineNumber | Should -BeLessThan $firstSection -Because "$key must precede the first [section]"
+            }
+        }
+    }
+}
+
 Describe 'the tracked set' {
     It 'has a test module for every script' {
         # The stand-in for the coverage threshold we cannot measure in

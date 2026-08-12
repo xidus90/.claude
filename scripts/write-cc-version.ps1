@@ -52,8 +52,11 @@ function Write-CcVersionFile {
 if (-not $DotSourceOnly) {
     $stdin = [Console]::In.ReadToEnd()
     $version = Resolve-ClaudeVersion -HookInput $stdin
-    $target = Join-Path $HOME '.claude\statusline\.cc-version'
     try {
+        # Join-Path belongs inside the guard as well: an unset HOME throws
+        # here, outside it, and would print the very banner this catch exists
+        # to prevent.
+        $target = Join-Path $HOME '.claude\statusline\.cc-version'
         Write-CcVersionFile -Version $version -Path $target
     } catch {
         # A locked file or an occupied parent path must not greet the user with
