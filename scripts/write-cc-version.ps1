@@ -24,7 +24,11 @@ function Resolve-ClaudeVersion {
 
     try {
         $payload = $HookInput | ConvertFrom-Json -ErrorAction Stop
-        if ($payload.version) { return [string]$payload.version }
+        # Guard on shape, not truthiness: any object is truthy and would
+        # stringify to something like "@{a=1}" straight into the statusline.
+        if ($payload.version -is [string] -and $payload.version -match '^\d+\.\d+') {
+            return [string]$payload.version
+        }
     } catch {
         # Fall through to the CLI.
     }
@@ -49,5 +53,11 @@ if (-not $DotSourceOnly) {
     $stdin = [Console]::In.ReadToEnd()
     $version = Resolve-ClaudeVersion -HookInput $stdin
     $target = Join-Path $HOME '.claude\statusline\.cc-version'
-    Write-CcVersionFile -Version $version -Path $target
+    try {
+        Write-CcVersionFile -Version $version -Path $target
+    } catch {
+        # A locked file or an occupied parent path must not greet the user with
+        # a stack trace at every session start. The statusline just omits the
+        # version, which is the right degradation for a cosmetic field.
+    }
 }
