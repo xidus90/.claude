@@ -95,6 +95,7 @@ Describe 'gitignore allowlist' {
     Context 'configuration is tracked' {
         $cases = @(
             @{ Path = '.gitignore' }
+            @{ Path = '.gitattributes' }
             @{ Path = 'README.md' }
             @{ Path = 'CLAUDE.md' }
             @{ Path = 'settings.json' }

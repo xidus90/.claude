@@ -60,6 +60,27 @@ Describe 'statusline config layout' {
     }
 }
 
+Describe 'the statusline wrapper' {
+    BeforeAll {
+        $script:Wrapper = Join-Path $script:RepoRoot 'statusline\statusline.cmd'
+    }
+
+    It 'uses CRLF line endings' {
+        # With LF, cmd mis-parses the batch file and prints a stream of
+        # "Der Befehl M ..." errors above the statusline on every render.
+        $text = [System.IO.File]::ReadAllText($script:Wrapper)
+        $lf = ([regex]::Matches($text, "(?<!`r)`n")).Count
+        $lf | Should -Be 0 -Because 'every LF must be preceded by CR'
+    }
+
+    It 'sets STARSHIP_CONFIG account-independently' {
+        $text = [System.IO.File]::ReadAllText($script:Wrapper)
+        $text | Should -Match 'STARSHIP_CONFIG'
+        $text | Should -Match '%USERPROFILE%'
+        $text | Should -Not -Match '(?i)C:\\Users\\'
+    }
+}
+
 Describe 'the tracked set' {
     It 'has a test module for every script' {
         # The stand-in for the coverage threshold we cannot measure in
@@ -76,7 +97,8 @@ Describe 'the tracked set' {
         Push-Location $script:RepoRoot
         try { $tracked = @(git ls-files) } finally { Pop-Location }
 
-        $allowedFiles = @('.gitignore', 'README.md', 'CLAUDE.md', 'settings.json', 'keybindings.json')
+        $allowedFiles = @('.gitignore', '.gitattributes', 'README.md', 'CLAUDE.md',
+                          'settings.json', 'keybindings.json')
         $allowedRoots = @('skills/', 'agents/', 'statusline/', 'scripts/', 'docs/')
 
         foreach ($file in $tracked) {

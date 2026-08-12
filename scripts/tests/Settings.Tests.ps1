@@ -30,9 +30,19 @@ Describe 'settings.json' {
         $script:Settings.enabledPlugins.$Plugin | Should -BeTrue
     }
 
-    It 'keeps cship as the statusline command' {
+    It 'routes the statusline through the wrapper, not cship directly' {
+        # Calling cship straight leaves STARSHIP_CONFIG to the inherited
+        # environment, which a long-running Claude Code does not have. The
+        # wrapper sets it per render, so row 1 works regardless of how the
+        # process was launched.
         $script:Settings.statusLine.type | Should -Be 'command'
-        $script:Settings.statusLine.command | Should -Be 'cship'
+        $script:Settings.statusLine.command | Should -Be 'claude-statusline.cmd'
+    }
+
+    It 'names the statusline command without a path' {
+        # It must resolve via PATH: an absolute path would be account-specific,
+        # and cmd and sh disagree about every other way of writing one.
+        $script:Settings.statusLine.command | Should -Not -Match '[\\/]'
     }
 
     It 'hardcodes no account-specific path' {

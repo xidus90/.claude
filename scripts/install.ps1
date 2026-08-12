@@ -329,6 +329,14 @@ function Invoke-Install {
     Write-Step 'Making starship reachable from any process'
     Install-StarshipShim
 
+    Write-Step 'Installing the statusline entry point'
+    # settings.json names it without a path, so it has to be on PATH. Next to
+    # cship is the one directory guaranteed to be, and a bare name is the only
+    # form both cmd and sh resolve — Claude Code's choice of shell is not
+    # something this repo can pin down.
+    Install-ConfigLink -Path (Join-Path (Get-ShimDirectory) 'claude-statusline.cmd') `
+                       -Target (Join-Path $script:RepoRoot 'statusline\statusline.cmd')
+
     $statuslineConfig = Join-Path $script:RepoRoot 'statusline\cship.toml'
     $configDir = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.config'
 

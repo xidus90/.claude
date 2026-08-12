@@ -17,7 +17,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "cship"
+    "command": "claude-statusline.cmd"
   },
   "enabledPlugins": {
     "superpowers@claude-plugins-official": true,
