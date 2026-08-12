@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "defaultMode": "auto"
+  },
+  "model": "opus[1m]",
+  "statusLine": {
+    "type": "command",
+    "command": "cship"
+  },
+  "enabledPlugins": {
+    "superpowers@claude-plugins-official": true,
+    "frontend-design@claude-plugins-official": false,
+    "mcp-server-dev@claude-plugins-official": false,
+    "code-review@claude-plugins-official": true,
+    "security-guidance@claude-plugins-official": true,
+    "browser-use@browser-use": true
+  },
+  "effortLevel": "low",
+  "autoUpdatesChannel": "latest",
+  "tui": "fullscreen",
+  "autoDreamEnabled": true,
+  "skipAutoPermissionPrompt": true
+}

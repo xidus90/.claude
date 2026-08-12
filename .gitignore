@@ -1,0 +1,19 @@
+# Allowlist, not blocklist: this folder is mostly runtime state, and a new
+# Claude Code release may add a directory we have never heard of. Denying
+# everything first means a forgotten entry costs nothing, while a forgotten
+# blocklist entry could commit credentials.
+/*
+
+!/.gitignore
+!/README.md
+!/CLAUDE.md
+!/settings.json
+!/keybindings.json
+!/skills/
+!/agents/
+!/statusline/
+!/scripts/
+!/docs/
+
+# Written per session by the SessionStart hook, not configuration.
+/statusline/.cc-version
