@@ -1,0 +1,64 @@
+# starship half of the Claude Code statusline. Separate from cship.toml on
+# purpose: cship ignores its own `lines` as soon as the config it reads carries
+# a top-level `format` key ("cship: format field is set — ignoring lines
+# config"), so the starship layout cannot live in the same file.
+#
+# cship spawns starship without passing any config path along, so starship must
+# be pointed here by the STARSHIP_CONFIG environment variable.
+#
+# This whole file renders as `$starship_prompt`, i.e. line 1 of the statusline:
+# one starship process instead of one per module, which is the difference
+# between ~110 ms and ~250 ms per redraw.
+format = "$time│ $directory│ $git_branch$git_state${custom.worktree}"
+
+# The trailing space of each module format supplies the gap after the
+# separator; add_newline off keeps the prompt to a single line.
+add_newline = false
+
+[time]
+disabled    = false
+time_format = "%H:%M"
+format      = "[$time]($style) "
+style       = "fg:#a9b1d6"
+
+[directory]
+truncation_length = 1
+truncate_to_repo  = true
+format            = "[$path]($style) "
+style             = "bold fg:#7dcfff"
+
+[git_branch]
+format = "[$symbol$branch]($style) "
+symbol = " "
+style  = "fg:#9ece6a"
+
+[git_state]
+format = "[\\($state\\)]($style) "
+style  = "bold fg:#e0af68"
+
+# Starship has no worktree module. A worktree is exactly the case where
+# --git-dir and --git-common-dir disagree; sh is used because spawning pwsh
+# per render would cost more than the whole statusline. use_stdin = false is
+# required: starship otherwise pipes the command into the shell, and `sh -c`
+# then aborts with "option requires an argument".
+#
+# Machine-dependent: this is where Git for Windows puts sh.exe on this PC.
+[custom.worktree]
+shell       = ["C:/Program Files/Git/bin/sh.exe", "-c"]
+use_stdin   = false
+when        = 'test "$(git rev-parse --git-dir)" != "$(git rev-parse --git-common-dir)"'
+command     = 'basename "$PWD"'
+format      = "[🌿 $output]($style) "
+style       = "fg:#bb9af7"
+description = "worktree marker"
+
+# Line 2, fetched as a single `starship module custom.ccversion` call. The file
+# is written once per session by scripts/write-cc-version.ps1.
+[custom.ccversion]
+shell       = ["C:/Program Files/Git/bin/sh.exe", "-c"]
+use_stdin   = false
+when        = 'test -f "$HOME/.claude/statusline/.cc-version"'
+command     = 'cat "$HOME/.claude/statusline/.cc-version"'
+format      = "[v$output]($style)"
+style       = "fg:#565f89"
+description = "Claude Code version"

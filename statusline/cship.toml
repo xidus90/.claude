@@ -1,0 +1,68 @@
+# cship — Claude Code statusline, line layout and the native [cship.*] modules.
+#
+# The starship side lives in statusline/starship.toml, not here: cship discards
+# its own `lines` as soon as this file carries a top-level `format` key. cship
+# also never hands its config to the starship subprocess, so STARSHIP_CONFIG
+# must point at that other file — without it, line 1 renders empty, which was
+# the bug this config fixes.
+#
+# Template syntax of `lines`: only `$name`, terminated by ASCII whitespace.
+# `${name}` is not supported, and a non-ASCII character directly after a token
+# (e.g. "$time│") swallows the rest of the line. Hence the space before every
+# separator.
+#
+# Line 1 is a single `starship prompt` call: every `starship module` is its own
+# process at ~50 ms, and five of them blow the redraw budget.
+[cship]
+lines = [
+  "$starship_prompt │ $cship.cost.total_lines_added $cship.cost.total_lines_removed",
+  "$cship.model │ $cship.effort │ $cship.cost │ $cship.context_bar │ $cship.usage_limits │ $custom.ccversion "
+]
+
+[cship.model]
+symbol = "🤖 "
+style  = "bold cyan"
+
+[cship.effort]
+symbol = "⚡ "
+style  = "fg:#bb9af7"
+
+[cship.cost]
+symbol             = "💰 "
+style              = "fg:#a9b1d6"
+warn_threshold     = 2.0
+warn_style         = "fg:#e0af68"
+critical_threshold = 5.0
+critical_style     = "bold fg:#f7768e"
+
+# Diff convention, not a threshold: added is green, removed is red. cship
+# ignores total_lines_*_format under [cship.cost]; the per-field subsection with
+# a `format` carrying starship markup is what takes effect. `style` is ignored
+# there too, so the colour lives inside the format string.
+[cship.cost.total_lines_added]
+format = "[+$value](bold fg:#9ece6a)"
+
+[cship.cost.total_lines_removed]
+format = "[-$value](bold fg:#f7768e)"
+
+[cship.context_bar]
+width              = 10
+style              = "fg:#7dcfff"
+warn_threshold     = 40.0
+warn_style         = "fg:#e0af68"
+critical_threshold = 70.0
+critical_style     = "bold fg:#f7768e"
+
+[cship.usage_limits]
+five_hour_format   = "⌛ 5h {pct}% ({reset})"
+seven_day_format   = "📅 7d {pct}% ({reset})"
+separator          = " │ "
+warn_threshold     = 60.0
+warn_style         = "fg:#e0af68"
+critical_threshold = 80.0
+critical_style     = "bold fg:#f7768e"
+
+# No [cship.peak_usage]: `cship explain` reports the module's config source as
+# (default) whatever this file says, and the module returns no value at all.
+# Configuring it would only pretend it were configurable, so it stays out of
+# `lines`.

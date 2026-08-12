@@ -1,0 +1,15 @@
+{
+  "session_id": "11111111-2222-3333-4444-555555555555",
+  "cwd": "C:/Users/micro/Documents/#GIT/space",
+  "workspace": {
+    "current_dir": "C:/Users/micro/Documents/#GIT/space",
+    "project_dir": "C:/Users/micro/Documents/#GIT/space"
+  },
+  "model": { "id": "claude-opus-5", "display_name": "Opus 5" },
+  "version": "2.1.220",
+  "cost": {
+    "total_cost_usd": 0.42,
+    "total_lines_added": 47,
+    "total_lines_removed": 12
+  }
+}
