@@ -65,14 +65,28 @@ Zwei Zeilen, gerendert von `cship` mit `starship` als Unterprozess:
 
 Drei Dinge daran sind nicht offensichtlich und kosten sonst Stunden:
 
-**`starship` muss installiert sein.** cship rendert seine eigenen
-`cship.*`-Module selbst und reicht alle übrigen an das starship-Binary weiter.
-Fehlt es, bleibt Zeile 1 **lautlos leer** — keine Fehlermeldung, nichts.
+**`starship` muss *erreichbar* sein, nicht nur installiert.** cship rendert
+seine eigenen `cship.*`-Module selbst und reicht alle übrigen an das
+starship-Binary weiter. Fehlt es im PATH, bleibt Zeile 1 **lautlos leer** —
+keine Fehlermeldung, nichts.
 
-**`STARSHIP_CONFIG` ist Pflicht.** cship gibt seine eigene Konfiguration nicht
-an den starship-Unterprozess weiter. Ohne die Variable fällt Zeile 1 auf
-starships Standard-Prompt zurück, statt die hiesige Konfiguration zu nutzen.
-Deshalb lesen beide Programme dieselbe Datei, `statusline/cship.toml`.
+Die Tücke: winget legt starship in ein Paketverzeichnis und hängt dieses an
+den **Benutzer-PATH** an. Ein bereits laufender Prozess liest den nie nach,
+und Claude Code erbt den PATH der Shell, aus der es gestartet wurde — die
+kann Tage alt sein. Deshalb legt `install.ps1` einen Link auf `starship.exe`
+neben `cship.exe`: dieses Verzeichnis ist nachweislich im PATH jedes
+Prozesses, der überhaupt `cship` ausführen kann.
+
+**`STARSHIP_CONFIG` ist Pflicht.** cship überschreibt den Konfigurationspfad
+für den starship-Prozess, den es startet — starships übliche Suche nach
+`~/.config/starship.toml` findet also nie statt. Ohne die Variable rendert
+Zeile 1 starships Standard-Prompt (`space on  main`) statt der hiesigen
+Konfiguration. Ein Link auf `~/.config/starship.toml` hilft dagegen **nicht**;
+das ist gemessen, nicht vermutet.
+
+Auch diese Variable ist eine Benutzer-Variable, die ein laufender Prozess
+nicht nachlädt. Nach dem ersten `install.ps1` muss Claude Code deshalb aus
+einer **neu geöffneten** Shell gestartet werden.
 
 **Die starship-Schlüssel müssen am Dateianfang stehen.** Rutschen `format`
 und `add_newline` ans Ende, bindet TOML sie an die zuletzt geöffnete

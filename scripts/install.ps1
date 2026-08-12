@@ -164,6 +164,79 @@ function Set-UserEnvironmentVariable {
     return 'set'
 }
 
+function Get-ShimDirectory {
+    <#
+        Where cship itself lives. That directory is demonstrably on PATH for
+        every process that can run cship, which is exactly the property the
+        starship shim needs.
+    #>
+    [OutputType([string])]
+    param()
+
+    $cship = Get-Command 'cship' -ErrorAction SilentlyContinue
+    if ($cship) { return (Split-Path -Parent $cship.Source) }
+    return (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.local\bin')
+}
+
+function Find-Starship {
+    <#
+        PATH is exactly what cannot be trusted here, so fall back to the
+        directory winget installs into. "Not on PATH" and "not installed"
+        are different problems with different answers.
+    #>
+    [OutputType([string])]
+    param()
+
+    $onPath = (Get-Command 'starship' -ErrorAction SilentlyContinue)?.Source
+    if ($onPath) { return $onPath }
+
+    $packages = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Microsoft\WinGet\Packages'
+    return (Get-ChildItem -Path $packages -Filter 'starship.exe' -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1 -ExpandProperty FullName)
+}
+
+function Install-StarshipShim {
+    <#
+        winget drops starship into a package directory it appends to the USER
+        PATH. A process that is already running never sees that — and Claude
+        Code inherits the PATH of whatever shell launched it, which may be
+        days old. The statusline then loses every starship module without a
+        word of explanation.
+
+        Placing starship next to cship sidesteps the whole question.
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
+    param()
+
+    $real = Find-Starship
+    if (-not $real) {
+        Write-Warn 'starship not found; the first statusline row will stay empty'
+        return
+    }
+
+    $shim = Join-Path (Get-ShimDirectory) 'starship.exe'
+    if ($shim -eq $real) {
+        Write-Skip 'starship already sits next to cship'
+        return
+    }
+    if ((Test-Path -LiteralPath $shim) -and
+        ((Get-FileHashOrNull -Path $shim) -eq (Get-FileHashOrNull -Path $real))) {
+        Write-Skip 'starship shim already current'
+        return
+    }
+
+    if ($PSCmdlet.ShouldProcess($shim, "link to $real")) {
+        if (Test-Path -LiteralPath $shim) { Remove-Item -LiteralPath $shim -Force }
+        try {
+            New-Item -ItemType HardLink -Path $shim -Target $real -ErrorAction Stop | Out-Null
+        } catch {
+            # Different volume, most likely. A copy costs disk but works.
+            Copy-Item -LiteralPath $real -Destination $shim -Force
+        }
+        Write-Done "$shim -> $real"
+    }
+}
+
 function Install-Tool {
     [CmdletBinding(SupportsShouldProcess)]
     param(
@@ -208,9 +281,16 @@ function Invoke-Install {
     # environment variable and the git hook still below are all useful
     # without it, and a half-configured machine is worse than a warned one.
     try {
-        Install-Tool -Name 'starship' -Installer {
-            winget install --id Starship.Starship --accept-source-agreements --accept-package-agreements
-            if ($LASTEXITCODE -ne 0) { throw "winget exited $LASTEXITCODE" }
+        if (Find-Starship) {
+            # Present but possibly unreachable — that is the shim's job, not
+            # winget's, and re-running winget here only produces noise.
+            Write-Skip 'starship already installed'
+        }
+        else {
+            Install-Tool -Name 'starship' -Installer {
+                winget install --id Starship.Starship --accept-source-agreements --accept-package-agreements
+                if ($LASTEXITCODE -ne 0) { throw "winget exited $LASTEXITCODE" }
+            }
         }
     } catch {
         Write-Warn "starship could not be installed ($($_.Exception.Message))."
@@ -246,11 +326,20 @@ function Invoke-Install {
         }
     }
 
+    Write-Step 'Making starship reachable from any process'
+    Install-StarshipShim
+
     $statuslineConfig = Join-Path $script:RepoRoot 'statusline\cship.toml'
+    $configDir = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.config'
 
     Write-Step 'Linking the statusline config'
-    Install-ConfigLink -Path (Join-Path $HOME '.config\cship.toml') -Target $statuslineConfig
+    Install-ConfigLink -Path (Join-Path $configDir 'cship.toml') -Target $statuslineConfig
 
+    # Linking ~/.config/starship.toml as well does NOT remove the need for the
+    # variable below, tempting as that sounds: cship overrides the config path
+    # for the starship it spawns, so the default lookup never happens.
+    # Measured — without the variable, row 1 renders starship's stock prompt
+    # ("space on  main") instead of this file's layout.
     Write-Step 'Pointing starship at the same file'
     Set-UserEnvironmentVariable -Name 'STARSHIP_CONFIG' -Value $statuslineConfig | Out-Null
 

@@ -249,6 +249,37 @@ Describe 'Set-UserEnvironmentVariable' {
     }
 }
 
+Describe 'Get-ShimDirectory' {
+    It 'points at the directory cship lives in' {
+        # That directory is provably on PATH for anything that can run cship,
+        # which is the property the starship shim depends on.
+        $cship = (Get-Command cship -ErrorAction SilentlyContinue).Source
+        if (-not $cship) { Set-ItResult -Skipped -Because 'cship is not installed here' }
+        Get-ShimDirectory | Should -Be (Split-Path -Parent $cship)
+    }
+}
+
+Describe 'Install-StarshipShim' {
+    It 'leaves an existing, current shim alone' {
+        { Install-StarshipShim } | Should -Not -Throw
+    }
+
+    It 'makes starship resolvable from a process with a stale PATH' {
+        # The actual bug: winget appends to the USER PATH, a running process
+        # never re-reads it, and Claude Code inherits the PATH of whatever
+        # shell started it. Every starship module then vanishes silently.
+        $shim = Join-Path (Get-ShimDirectory) 'starship.exe'
+        Test-Path $shim | Should -BeTrue
+    }
+
+    It 'does nothing under -WhatIf' {
+        $shim = Join-Path (Get-ShimDirectory) 'starship.exe'
+        $before = Get-FileHashOrNull -Path $shim
+        Install-StarshipShim -WhatIf
+        Get-FileHashOrNull -Path $shim | Should -Be $before
+    }
+}
+
 Describe 'the installer as a whole' {
     It 'changes nothing under -WhatIf' {
         # The only end-to-end assertion that is safe to make: a dry run must
