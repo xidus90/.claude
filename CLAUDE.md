@@ -9,6 +9,11 @@ Diese Datei gilt für alle Projekte (User-Scope).
   `superpowers:brainstorming` (Anforderungen & Design klären), dann
   `superpowers:writing-plans` für den eigentlichen Plan. Niemals einen Plan ohne
   Superpowers schreiben.
+- **Specs und Pläne liegen im Projekt-Repo.** Eine Superpowers-Spec gehört nach
+  `docs/superpowers/specs/`, ein Implementierungsplan nach
+  `docs/superpowers/plans/` — immer im Repo des Projekts, um das es geht. Nie
+  in einem zentralen Ablageort, nie im Scratchpad. Ein Plan, der nicht neben
+  dem Code liegt, den er beschreibt, wird nicht wiedergefunden.
 
 ## Subagenten
 

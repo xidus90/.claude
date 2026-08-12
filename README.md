@@ -1,0 +1,144 @@
+# Claude-Code-Konfiguration
+
+Dieses Repo *ist* `C:\Users\micro\.claude`. Es gibt keine Kopie und keinen
+Sync-Schritt: Was Claude Code liest, ist genau das, was hier eingecheckt ist.
+
+Versioniert wird nur die **Nutzerebene** — Einstellungen, Statusline, eigene
+Skills und Agenten, Skripte, Dokumentation. Sitzungen, Verlauf, Zugangsdaten,
+Caches und die Plugin-Zustandsdateien bleiben draußen.
+
+Welche Plugins und MCP-Server ein *Projekt* nutzt, entscheidet das Projekt in
+seiner eigenen `.claude/settings.json`. Hier steht ausschließlich, was auf
+allen Rechnern gleich sein soll.
+
+## Inbetriebnahme auf einem neuen PC
+
+Voraussetzungen, die das Skript **nicht** installiert: **git**, **Claude Code**
+und **PowerShell 7** (`pwsh`).
+
+`git clone` funktioniert hier nicht — der Ordner existiert auf einem frischen
+PC bereits und ist nicht leer. Stattdessen:
+
+```powershell
+cd $HOME\.claude
+git init -b main
+git remote add origin <url>
+git fetch
+git checkout -f main
+pwsh -NoProfile -File scripts\install.ps1
+```
+
+`checkout -f` überschreibt die Standarddateien, die ein frisch installiertes
+Claude Code angelegt hat. Laufzeitdaten bleiben unberührt, weil sie nicht Teil
+des Repos sind.
+
+Danach **Claude Code neu starten**, damit Statusline und Plugins greifen.
+
+## ⚠ Kein `git clean`
+
+In diesem Repo ist `git clean` verboten. `git clean -fdx` würde alle
+Sitzungen, den Verlauf und `.credentials.json` löschen — sie sind ungetrackt,
+und das ist Absicht. Zum Verwerfen von Änderungen `git restore` verwenden.
+
+## Was das Install-Skript tut
+
+`scripts\install.ps1` ist idempotent; ein zweiter Lauf meldet nur, was er
+überspringt. Mit `-WhatIf` läuft es trocken.
+
+1. prüft `git` und `claude` und bricht sonst mit klarer Meldung ab
+2. installiert `uv`, `cship` und `starship`, sofern sie fehlen
+3. registriert die Plugin-Marketplaces und installiert die Plugins, die in
+   `settings.json` unter `enabledPlugins` auf `true` stehen
+4. verknüpft `~/.config/cship.toml` mit `statusline/cship.toml`
+5. setzt `STARSHIP_CONFIG` auf dieselbe Datei
+6. installiert den `pre-commit`-Hook
+7. gibt eine Versionsübersicht aus
+
+## Die Statusline
+
+Zwei Zeilen, gerendert von `cship` mit `starship` als Unterprozess:
+
+```
+18:00 │ space │  main │ +47 -12
+🤖 Opus 5 │ ⚡ low │ 💰 $0.42 │ ░░░░░░░░░░ 6% │ ⌛ 5h 28% │ 📅 7d 7% │ ⏰ Peak │ v2.1.220
+```
+
+Drei Dinge daran sind nicht offensichtlich und kosten sonst Stunden:
+
+**`starship` muss installiert sein.** cship rendert seine eigenen
+`cship.*`-Module selbst und reicht alle übrigen an das starship-Binary weiter.
+Fehlt es, bleibt Zeile 1 **lautlos leer** — keine Fehlermeldung, nichts.
+
+**`STARSHIP_CONFIG` ist Pflicht.** cship gibt seine eigene Konfiguration nicht
+an den starship-Unterprozess weiter. Ohne die Variable fällt Zeile 1 auf
+starships Standard-Prompt zurück, statt die hiesige Konfiguration zu nutzen.
+Deshalb lesen beide Programme dieselbe Datei, `statusline/cship.toml`.
+
+**Die starship-Schlüssel müssen am Dateianfang stehen.** Rutschen `format`
+und `add_newline` ans Ende, bindet TOML sie an die zuletzt geöffnete
+`[cship.*]`-Sektion, und Zeile 1 fällt wieder aus. Ein Kommentar in der Datei
+warnt davor; ein Test prüft es nicht.
+
+## Bekannte PC-Abhängigkeiten
+
+**Der Link auf `~/.config/cship.toml` ist auf diesem PC ein Hardlink**, kein
+Symlink — Windows verweigert Symlinks ohne Administratorrechte oder
+Entwicklermodus. Ein Hardlink teilt den Inhalt, aber nicht die Identität:
+Sobald `git checkout` die Datei im Repo **ersetzt** statt sie zu ändern, zeigt
+der Link auf den alten Inhalt weiter. Die Statusline wird dann still veraltet,
+ohne Fehlermeldung. Deshalb nach jedem Checkout, der `statusline/cship.toml`
+anfasst, `scripts\install.ps1` erneut laufen lassen — es vergleicht Hashes
+statt bloßer Existenz und legt den Link neu.
+
+Wer den Entwicklermodus einschaltet, bekommt beim nächsten Lauf einen echten
+Symlink und ist das Problem los.
+
+`STARSHIP_CONFIG` enthält einen absoluten Pfad und ist damit rechnerabhängig.
+Das Skript setzt ihn bei jedem Lauf neu.
+
+## Warum die Plugin-Manifeste fehlen
+
+`plugins/installed_plugins.json` und `plugins/known_marketplaces.json` sind
+bewusst **nicht** versioniert. Es sind Zustandsdateien: absolute
+Installationspfade, Zeitstempel, und Einträge für Plugins, die einzelne
+fremde Projekte aktiviert haben. Auf einem zweiten PC zeigen die Pfade ins
+Leere, und jedes Projekt, das ein Plugin aktiviert, erzeugte einen
+Merge-Konflikt.
+
+Versioniert wird stattdessen die *Absicht*: `enabledPlugins` und
+`extraKnownMarketplaces` in `settings.json`, beide maschinenunabhängig. Das
+Install-Skript stellt den Zustand daraus her.
+
+## Was wo liegt
+
+| Pfad | Inhalt |
+|---|---|
+| `settings.json` | Nutzereinstellungen, Plugins, Marketplaces, Hooks |
+| `CLAUDE.md` | Globale Anweisungen für alle Projekte |
+| `statusline/cship.toml` | Statusline — von cship *und* starship gelesen |
+| `scripts/install.ps1` | Einrichtung eines neuen PCs, idempotent |
+| `scripts/pre-commit.ps1` | Verhindert Commits mit Secrets |
+| `scripts/write-cc-version.ps1` | SessionStart-Hook für die Versionsanzeige |
+| `scripts/tests/` | Pester-5-Tests zu allem oben |
+| `docs/superpowers/` | Specs und Implementierungspläne |
+
+## Tests
+
+```powershell
+Invoke-Pester scripts\tests -Output Detailed
+```
+
+Pester 5 oder neuer wird benötigt; das mit Windows gelieferte Pester 3.4.0
+genügt nicht:
+
+```powershell
+Install-Module Pester -MinimumVersion 5.5.0 -Scope CurrentUser -Force -SkipPublisherCheck
+```
+
+Die Statusline-Tests brauchen `starship` im PATH. Nach einer frischen
+winget-Installation liegt es nur im Benutzer-PATH, den eine laufende Shell
+noch nicht kennt — dann eine neue Shell öffnen.
+
+Code-Coverage wird **nicht** gemessen: Für PowerShell fehlt das Werkzeug in
+diesem Setup. Ersatzregel, maschinell geprüft in `Repo.Tests.ps1`: Jedes
+Skript unter `scripts/` hat ein Testmodul.
