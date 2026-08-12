@@ -3,6 +3,18 @@
     "defaultMode": "auto"
   },
   "model": "opus[1m]",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -File C:\\Users\\micro\\.claude\\scripts\\write-cc-version.ps1"
+          }
+        ]
+      }
+    ]
+  },
   "statusLine": {
     "type": "command",
     "command": "cship"
@@ -15,17 +27,19 @@
     "security-guidance@claude-plugins-official": true,
     "browser-use@browser-use": true
   },
-  "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "pwsh -NoProfile -File C:\\Users\\micro\\.claude\\scripts\\write-cc-version.ps1"
-          }
-        ]
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
       }
-    ]
+    },
+    "browser-use": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/browser-use/plugins.git"
+      }
+    }
   },
   "effortLevel": "low",
   "autoUpdatesChannel": "latest",
