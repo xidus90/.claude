@@ -321,9 +321,11 @@ param([switch]$DotSourceOnly)
 
 $ErrorActionPreference = 'Stop'
 
-# Paths whose whole purpose is to contain secret-shaped strings.
+# Paths whose whole purpose is to contain secret-shaped strings: the hook's
+# own test fixtures, and the plan that quotes them.
 $script:SecretScanExclusions = @(
     'scripts/tests/PreCommit.Tests.ps1'
+    'docs/superpowers/plans/2026-08-12-claude-config-repo.md'
 )
 
 function Find-Secret {
