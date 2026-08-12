@@ -4,10 +4,20 @@ BeforeAll {
     $script:Fixture  = Join-Path $PSScriptRoot 'fixtures\statusline-input.json'
 
     # cship spawns starship as a subprocess and does not pass its own --config
-    # along, so starship would fall back to its defaults and render line 1
-    # empty. The machine sets this in the user environment; the test pins it so
-    # it does not depend on the shell it runs in.
-    $env:STARSHIP_CONFIG = Join-Path $script:RepoRoot 'statusline\starship.toml'
+    # along, so starship would fall back to its defaults and render line 1 as a
+    # default prompt. One file serves both programs; the test pins the variable
+    # so it does not depend on the shell it runs in.
+    $env:STARSHIP_CONFIG = $script:Config
+
+    # statusline/.cc-version is gitignored and written once per session by the
+    # SessionStart hook, so it is missing on a fresh checkout. Supply it for the
+    # duration of the run and remove it again if we were the ones to create it.
+    $script:VersionFile  = Join-Path $script:RepoRoot 'statusline\.cc-version'
+    $script:WroteVersion = -not (Test-Path $script:VersionFile)
+    if ($script:WroteVersion) {
+        Set-Content -Path $script:VersionFile -Value '2.1.220' -NoNewline -Encoding utf8
+    }
+    $script:Version = (Get-Content $script:VersionFile -Raw).Trim()
 
     function Get-RenderedStatusline {
         param([string]$ConfigPath = $script:Config)
@@ -23,8 +33,27 @@ BeforeAll {
         }
     }
 
+    function Get-LineCount {
+        param([string]$Body)
+
+        $file = Join-Path ([System.IO.Path]::GetTempPath()) "cship-guard-$([guid]::NewGuid()).toml"
+        Set-Content -Path $file -Value $Body -Encoding utf8
+        try {
+            $out = Get-RenderedStatusline -ConfigPath $file
+            return @($out -split "`r?`n" | Where-Object { $_.Trim() }).Count
+        } finally {
+            Remove-Item $file -ErrorAction SilentlyContinue
+        }
+    }
+
     $script:Rendered = Get-RenderedStatusline
     $script:Lines    = @($script:Rendered -split "`r?`n" | Where-Object { $_.Trim() })
+}
+
+AfterAll {
+    if ($script:WroteVersion) {
+        Remove-Item $script:VersionFile -ErrorAction SilentlyContinue
+    }
 }
 
 Describe 'statusline rendering' {
@@ -34,22 +63,19 @@ Describe 'statusline rendering' {
         $script:Lines.Count | Should -Be 2
     }
 
-    It 'counts one line when the starship half of line 1 is missing' {
-        # Guards the assertion above: without this, a two-line count could come
-        # from line splitting rather than from line 1 actually rendering.
-        $bare = Join-Path ([System.IO.Path]::GetTempPath()) 'cship-no-starship.toml'
-        @'
-[cship]
-lines = ["$cship.peak_usage", "$cship.model"]
-'@ | Set-Content -Path $bare -Encoding utf8
-        try {
-            $out   = Get-RenderedStatusline -ConfigPath $bare
-            $lines = @($out -split "`r?`n" | Where-Object { $_.Trim() })
-            $lines.Count | Should -Be 1
-            $lines[0] | Should -Match 'Opus 5'
-        } finally {
-            Remove-Item $bare -ErrorAction SilentlyContinue
-        }
+    # The two guards below pin down what the assertion above actually measures:
+    # the count has to come from line 1 rendering content, not from the split or
+    # the ANSI stripping. $cship.agent is absent from the fixture and renders
+    # nothing, $cship.cost renders "$0.42" — same shape of config, one bit of
+    # difference, and the count follows it.
+    It 'counts one line when line 1 renders nothing' {
+        Get-LineCount '[cship]
+lines = ["$cship.agent", "$cship.model"]' | Should -Be 1
+    }
+
+    It 'counts two lines when line 1 renders something' {
+        Get-LineCount '[cship]
+lines = ["$cship.cost", "$cship.model"]' | Should -Be 2
     }
 
     Context 'line 1' {
@@ -57,7 +83,9 @@ lines = ["$cship.peak_usage", "$cship.model"]
             $script:Lines[0] | Should -Match '\d{2}:\d{2}'
         }
         It 'shows the project folder' {
-            $script:Lines[0] | Should -Match 'space'
+            # Rendering runs from the repo root, so starship's directory module
+            # must name that folder.
+            $script:Lines[0] | Should -Match ([regex]::Escape((Split-Path -Leaf $script:RepoRoot)))
         }
         It 'shows the git branch' {
             $script:Lines[0] | Should -Match 'main'
@@ -78,19 +106,31 @@ lines = ["$cship.peak_usage", "$cship.model"]
         It 'shows a context bar percentage' {
             $script:Lines[1] | Should -Match '%'
         }
+        It 'shows the peak usage marker' {
+            $script:Lines[1] | Should -Match 'Peak'
+        }
         It 'shows the Claude Code version from the cached file' {
-            $script:Lines[1] | Should -Match 'v2\.1\.220'
+            $script:Lines[1] | Should -Match ([regex]::Escape("v$script:Version"))
         }
     }
 
     Context 'cost' {
-        It 'renders in under 200 ms' {
-            # A statusline redraws constantly; two subprocesses for the custom
-            # modules are the budget, a third would be felt.
-            $sw = [System.Diagnostics.Stopwatch]::StartNew()
-            Get-RenderedStatusline | Out-Null
-            $sw.Stop()
-            $sw.ElapsedMilliseconds | Should -BeLessThan 200
+        It 'renders in under 250 ms' {
+            # A statusline redraws constantly, so the render has to stay cheap.
+            # Measured spread over twelve runs on this machine: 168-199 ms with
+            # a single 255 ms outlier, hence the median of five rather than a
+            # single sample -- one scheduling hiccup must not fail the suite.
+            # The budget still catches the regression this test exists for:
+            # rendering line 1 as five separate `starship module` processes
+            # measured 367-399 ms.
+            $samples = 1..5 | ForEach-Object {
+                $sw = [System.Diagnostics.Stopwatch]::StartNew()
+                Get-RenderedStatusline | Out-Null
+                $sw.Stop()
+                $sw.ElapsedMilliseconds
+            }
+            $median = ($samples | Sort-Object)[2]
+            $median | Should -BeLessThan 250
         }
     }
 }

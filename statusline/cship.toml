@@ -1,11 +1,34 @@
-# cship — Claude Code statusline, line layout and the native [cship.*] modules.
+# Claude Code statusline — one file, read by two programs.
 #
-# The starship side lives in statusline/starship.toml, not here: cship discards
-# its own `lines` as soon as this file carries a top-level `format` key. cship
-# also never hands its config to the starship subprocess, so STARSHIP_CONFIG
-# must point at that other file — without it, line 1 renders empty, which was
-# the bug this config fixes.
+# cship reads it (as ~/.config/cship.toml) for `lines` and the native [cship.*]
+# modules. starship reads the very same file, via STARSHIP_CONFIG, for the
+# top-level `format` and the [time]/[directory]/[git_*]/[custom.*] sections
+# behind `$starship_prompt` and `$custom.ccversion`.
 #
+# Why STARSHIP_CONFIG is mandatory: cship spawns starship as a subprocess and
+# never passes its own config path along, so starship falls back to
+# ~/.config/starship.toml or its built-in defaults. Measured without the
+# variable, line 1 degrades to starship's default prompt ("~\.claude on  main")
+# and $custom.ccversion disappears. Point STARSHIP_CONFIG at this file.
+#
+# Why one file and not two: nothing forces a split. A top-level `format` key was
+# once believed to make cship discard `lines`; that is false — verified by
+# rendering this exact config with and without it, two lines either way. Both
+# programs ignore the other's keys without a warning, so one file means one link
+# to install and one path to configure.
+#
+# The two starship keys below sit at the very top because TOML binds bare keys
+# to the table above them: written further down they would silently become
+# members of the last [cship.*] section instead of top-level starship settings.
+#
+# `format` renders as `$starship_prompt`, i.e. line 1 of the statusline: one
+# starship process instead of one per module, which is the difference between
+# ~110 ms and ~250 ms per redraw. The trailing space of each module format
+# supplies the gap after the separator; add_newline off keeps the prompt to a
+# single line.
+format      = "$time│ $directory│ $git_branch$git_state${custom.worktree}"
+add_newline = false
+
 # Template syntax of `lines`: only `$name`, terminated by ASCII whitespace.
 # `${name}` is not supported, and a non-ASCII character directly after a token
 # (e.g. "$time│") swallows the rest of the line. Hence the space before every
@@ -16,7 +39,7 @@
 [cship]
 lines = [
   "$starship_prompt │ $cship.cost.total_lines_added $cship.cost.total_lines_removed",
-  "$cship.model │ $cship.effort │ $cship.cost │ $cship.context_bar │ $cship.usage_limits │ $custom.ccversion "
+  "$cship.model │ $cship.effort │ $cship.cost │ $cship.context_bar │ $cship.usage_limits │ $cship.peak_usage │ $custom.ccversion "
 ]
 
 [cship.model]
@@ -62,7 +85,60 @@ warn_style         = "fg:#e0af68"
 critical_threshold = 80.0
 critical_style     = "bold fg:#f7768e"
 
-# No [cship.peak_usage]: `cship explain` reports the module's config source as
-# (default) whatever this file says, and the module returns no value at all.
-# Configuring it would only pretend it were configurable, so it stays out of
-# `lines`.
+# `cship explain` lists the source of this module as (default). That column is
+# not a support signal: the section below is honoured — symbol and style both
+# render — so peak_usage stays.
+[cship.peak_usage]
+symbol = "⏰ "
+style  = "fg:#e0af68"
+
+# ─── Below here: read by starship, not by cship ──────────────────────────────
+
+[time]
+disabled    = false
+time_format = "%H:%M"
+format      = "[$time]($style) "
+style       = "fg:#a9b1d6"
+
+[directory]
+truncation_length = 1
+truncate_to_repo  = true
+format            = "[$path]($style) "
+style             = "bold fg:#7dcfff"
+
+[git_branch]
+format = "[$symbol$branch]($style) "
+symbol = " "
+style  = "fg:#9ece6a"
+
+[git_state]
+format = "[\\($state\\)]($style) "
+style  = "bold fg:#e0af68"
+
+# Starship has no worktree module. A worktree is exactly the case where
+# --git-dir and --git-common-dir disagree; sh is used because spawning pwsh
+# per render would cost more than the whole statusline. use_stdin = false is
+# required: starship otherwise pipes the command into the shell, and `sh -c`
+# then aborts with "option requires an argument".
+#
+# Machine-dependent: this is where Git for Windows puts sh.exe on this PC.
+[custom.worktree]
+shell       = ["C:/Program Files/Git/bin/sh.exe", "-c"]
+use_stdin   = false
+when        = 'test "$(git rev-parse --git-dir)" != "$(git rev-parse --git-common-dir)"'
+command     = 'basename "$PWD"'
+format      = "[🌿 $output]($style) "
+style       = "fg:#bb9af7"
+description = "worktree marker"
+
+# Line 2, fetched as a single `starship module custom.ccversion` call. The file
+# is written once per session by scripts/write-cc-version.ps1 and is gitignored,
+# so it is absent on a fresh checkout until that hook has run.
+[custom.ccversion]
+shell       = ["C:/Program Files/Git/bin/sh.exe", "-c"]
+use_stdin   = false
+when        = 'test -f "$HOME/.claude/statusline/.cc-version"'
+command     = 'cat "$HOME/.claude/statusline/.cc-version"'
+format      = "[v$output]($style)"
+style       = "fg:#565f89"
+description = "Claude Code version"
