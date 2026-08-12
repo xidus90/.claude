@@ -48,4 +48,69 @@ Describe 'Find-Secret' {
             Find-Secret -Content $content -Path 'scripts/tests/PreCommit.Tests.ps1' | Should -BeNullOrEmpty
         }
     }
+
+    Context 'catches further key shapes' {
+        It 'flags a Google API key' {
+            Find-Secret -Content 'AIzaSyA1234567890abcdefghijklmnopqrstuvw' -Path 'x.md' | Should -Not -BeNullOrEmpty
+        }
+        It 'flags a JWT' {
+            $content = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjMifQ.abc'
+            Find-Secret -Content $content -Path 'x.md' | Should -Not -BeNullOrEmpty
+        }
+        It 'flags a modern OpenAI key containing dashes and underscores' {
+            $content = 'sk-proj-AAAABBBBCCCCDDDD_EEEEFFFFGGGGHHHH-IIIIJJJJ'
+            Find-Secret -Content $content -Path 'x.md' | Should -Not -BeNullOrEmpty
+        }
+    }
+}
+
+Describe 'Get-StagedFile' {
+
+    BeforeEach {
+        # A throwaway repo: the enumeration can only be tested against a real
+        # index, and the config repo's own index must not be disturbed.
+        $script:repo = Join-Path $TestDrive ([guid]::NewGuid().ToString('n'))
+        New-Item -ItemType Directory -Path $script:repo | Out-Null
+        Push-Location $script:repo
+        git init --quiet 2>&1 | Out-Null
+        git config user.email 'test@example.invalid'
+        git config user.name 'Test'
+    }
+
+    AfterEach {
+        Pop-Location
+    }
+
+    It 'enumerates a staged file whose name is not ASCII, under a name git show accepts' {
+        Set-Content -Path (Join-Path $script:repo 'uber.md') -Value 'placeholder'
+        $umlaut = Join-Path $script:repo ([char]0x00FC + 'ber.md')
+        Set-Content -Path $umlaut -Value 'api_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"' -Encoding utf8
+        Remove-Item (Join-Path $script:repo 'uber.md')
+        git add -A 2>&1 | Out-Null
+
+        $staged = @(Get-StagedFile)
+        $expected = [char]0x00FC + 'ber.md'
+        $staged | Should -Contain $expected
+
+        # The name must round-trip: a path git cannot resolve reads as unscanned.
+        git show ":$expected" 2>$null | Out-String | Should -Match 'api_key'
+    }
+
+    It 'includes a renamed file' {
+        Set-Content -Path (Join-Path $script:repo 'old.md') -Value 'some tracked prose that is long enough to detect as a rename'
+        git add old.md 2>&1 | Out-Null
+        git commit -m 'seed' --no-verify --quiet 2>&1 | Out-Null
+        git mv old.md new.md 2>&1 | Out-Null
+
+        @(Get-StagedFile) | Should -Contain 'new.md'
+    }
+}
+
+Describe 'Get-StagedSecretFinding' {
+
+    It 'reports a finding when a staged blob cannot be read' {
+        $findings = @(Get-StagedSecretFinding -File @('does/not/exist/in/index.md'))
+        $findings | Should -Not -BeNullOrEmpty
+        $findings -join "`n" | Should -Match 'could not read staged content'
+    }
 }

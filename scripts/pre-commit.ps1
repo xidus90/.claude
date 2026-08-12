@@ -24,9 +24,12 @@ function Find-Secret {
 
     $patterns = [ordered]@{
         'Anthropic API key'   = 'sk-ant-[A-Za-z0-9_\-]{8,}'
-        'OpenAI API key'      = 'sk-[A-Za-z0-9]{32,}'
+        # Modern OpenAI keys carry project segments, hence - and _ as well.
+        'OpenAI API key'      = 'sk-[A-Za-z0-9_\-]{32,}'
         'GitHub token'        = 'gh[pousr]_[A-Za-z0-9]{20,}'
         'AWS access key id'   = 'AKIA[0-9A-Z]{16}'
+        'Google API key'      = 'AIza[0-9A-Za-z_\-]{35}'
+        'JSON web token'      = 'eyJ[A-Za-z0-9_\-]{20,}\.'
         'Slack token'         = 'xox[baprs]-[A-Za-z0-9\-]{10,}'
         'private key block'   = '-----BEGIN [A-Z ]*PRIVATE KEY-----'
         # A long hex or base64 run is only suspicious next to a key-ish name.
@@ -43,18 +46,44 @@ function Find-Secret {
     return @($findings)
 }
 
-function Invoke-PreCommitHook {
-    $staged = @(git diff --cached --name-only --diff-filter=ACM)
-    if ($staged.Count -eq 0) { return 0 }
+# Names the staged files. core.quotepath=false plus -z is what keeps a
+# non-ASCII path readable: quoted, it comes back as "\303\274ber.md", which
+# git show cannot resolve -- the file would then go unscanned in silence.
+# R is in the filter because a pure rename also puts content into the commit.
+function Get-StagedFile {
+    [OutputType([string[]])]
+    param()
 
-    $findings = foreach ($file in $staged) {
-        $content = git show ":$file" 2>$null
-        if ($null -ne $content) {
-            Find-Secret -Content ($content -join "`n") -Path $file
+    $raw = git -c core.quotepath=false diff --cached --name-only -z --diff-filter=ACMR
+    if ([string]::IsNullOrEmpty($raw)) { return @() }
+
+    return @(($raw -join "`n") -split "`0" | Where-Object { $_ -ne '' })
+}
+
+function Get-StagedSecretFinding {
+    [OutputType([string[]])]
+    param([Parameter(Mandatory)][AllowEmptyCollection()][string[]]$File)
+
+    $findings = foreach ($f in $File) {
+        $content = git show ":$f" 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            # An unreadable blob is not a clean blob. Refusing beats scanning
+            # nothing and reporting success.
+            "$f : could not read staged content, refusing to treat it as clean"
+        }
+        else {
+            Find-Secret -Content ($content -join "`n") -Path $f
         }
     }
 
-    $findings = @($findings)
+    return @($findings)
+}
+
+function Invoke-PreCommitHook {
+    $staged = @(Get-StagedFile)
+    if ($staged.Count -eq 0) { return 0 }
+
+    $findings = @(Get-StagedSecretFinding -File $staged)
     if ($findings.Count -eq 0) { return 0 }
 
     Write-Host 'pre-commit: refusing to commit, possible secrets found:' -ForegroundColor Red
