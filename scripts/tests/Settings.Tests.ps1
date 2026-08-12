@@ -45,7 +45,16 @@ Describe 'settings.json' {
 
     It 'resolves the SessionStart hook relative to the running user' {
         $command = $script:Settings.hooks.SessionStart[0].hooks[0].command
-        $command | Should -Match '\$HOME'
         $command | Should -Match 'write-cc-version\.ps1'
+        $command | Should -Match "GetFolderPath\('UserProfile'\)"
+    }
+
+    It 'does not resolve the hook path through $HOME' {
+        # Claude Code invokes hooks through a shell that sets a POSIX-style
+        # HOME (/c/Users/...), which PowerShell adopts for $HOME. The hook
+        # then failed with "\c\Users\micro\.claude\... is not recognized".
+        # The .NET profile folder is immune to whatever the shell exports.
+        $script:Settings.hooks.SessionStart[0].hooks[0].command |
+            Should -Not -Match '\$HOME'
     }
 }
