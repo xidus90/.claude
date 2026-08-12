@@ -5,6 +5,16 @@ param([switch]$DotSourceOnly)
 
 $ErrorActionPreference = 'Stop'
 
+# Git runs this through sh -> pwsh, where the console is a legacy OEM code page
+# (ibm850 on this machine). pwsh would then mis-decode git's UTF-8 stdout, and a
+# path such as "ueber.md" spelled with an umlaut no longer resolves for
+# git show -- the file gets reported unreadable instead of scanned. Pin UTF-8
+# before the first git call. Without BOM: $OutputEncoding also governs what we
+# hand to native commands, and a BOM would corrupt that.
+$script:Utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $script:Utf8NoBom
+$OutputEncoding = $script:Utf8NoBom
+
 # Paths whose whole purpose is to contain secret-shaped strings: the hook's
 # own test fixtures, and the plan that quotes them.
 $script:SecretScanExclusions = @(
@@ -25,7 +35,9 @@ function Find-Secret {
     $patterns = [ordered]@{
         'Anthropic API key'   = 'sk-ant-[A-Za-z0-9_\-]{8,}'
         # Modern OpenAI keys carry project segments, hence - and _ as well.
-        'OpenAI API key'      = 'sk-[A-Za-z0-9_\-]{32,}'
+        # The left boundary keeps "risk-management-..." from matching on the
+        # "sk-" buried inside it; without it the hook nags on ordinary prose.
+        'OpenAI API key'      = '(?<![A-Za-z0-9])sk-[A-Za-z0-9_\-]{32,}'
         'GitHub token'        = 'gh[pousr]_[A-Za-z0-9]{20,}'
         'AWS access key id'   = 'AKIA[0-9A-Z]{16}'
         'Google API key'      = 'AIza[0-9A-Za-z_\-]{35}'
@@ -57,7 +69,20 @@ function Get-StagedFile {
     $raw = git -c core.quotepath=false diff --cached --name-only -z --diff-filter=ACMR
     if ([string]::IsNullOrEmpty($raw)) { return @() }
 
-    return @(($raw -join "`n") -split "`0" | Where-Object { $_ -ne '' })
+    $staged = @(($raw -join "`n") -split "`0" | Where-Object { $_ -ne '' })
+    if ($staged.Count -eq 0) { return @() }
+
+    # A submodule is staged as a gitlink (mode 160000) with no blob behind it,
+    # so git show would fail and the fail-closed branch would block every
+    # commit that adds one. Not scannable, and nothing here to scan.
+    $gitlinks = @(
+        git -c core.quotepath=false ls-files --stage -z -- $staged |
+            ForEach-Object { $_ -split "`0" } |
+            Where-Object { $_ -match '^160000\s' } |
+            ForEach-Object { ($_ -split "`t", 2)[1] }
+    )
+
+    return @($staged | Where-Object { $gitlinks -notcontains $_ })
 }
 
 function Get-StagedSecretFinding {

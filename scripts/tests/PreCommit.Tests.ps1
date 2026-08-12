@@ -43,6 +43,16 @@ Describe 'Find-Secret' {
         It 'passes German prose' {
             Find-Secret -Content 'Die Konfiguration liegt im Repo.' -Path 'README.md' | Should -BeNullOrEmpty
         }
+        It 'passes a kebab-case filename that merely contains sk- inside a word' {
+            $content = 'Siehe risk-management-and-compliance-review-checklist-2026.md fuer Details.'
+            Find-Secret -Content $content -Path 'README.md' | Should -BeNullOrEmpty
+        }
+        It 'flags a kebab-case identifier that really starts with sk-, accepted as a residual false positive' {
+            # Decided: a bare token starting with sk- and running 32+ chars is
+            # rare enough in prose, and an OpenAI key is exactly that shape.
+            # A miss here would be worse than the occasional nag.
+            Find-Secret -Content 'sk-this-is-a-very-long-kebab-case-identifier-here' -Path 'x.md' | Should -Not -BeNullOrEmpty
+        }
         It 'passes the test file itself, which is full of fake keys' {
             $content = 'sk-ant-api03-AAAABBBBCCCCDDDD'
             Find-Secret -Content $content -Path 'scripts/tests/PreCommit.Tests.ps1' | Should -BeNullOrEmpty
@@ -104,6 +114,26 @@ Describe 'Get-StagedFile' {
 
         @(Get-StagedFile) | Should -Contain 'new.md'
     }
+
+    It 'skips a submodule gitlink, whose mode 160000 has no readable blob' {
+        $sub = Join-Path $TestDrive ([guid]::NewGuid().ToString('n'))
+        New-Item -ItemType Directory -Path $sub | Out-Null
+        Push-Location $sub
+        try {
+            git init --quiet 2>&1 | Out-Null
+            git config user.email 'test@example.invalid'
+            git config user.name 'Test'
+            Set-Content -Path (Join-Path $sub 'readme.md') -Value 'submodule content'
+            git add readme.md 2>&1 | Out-Null
+            git commit -m 'seed' --no-verify --quiet 2>&1 | Out-Null
+        }
+        finally { Pop-Location }
+
+        git -c protocol.file.allow=always submodule add --quiet ($sub -replace '\\', '/') sub 2>&1 | Out-Null
+        (git ls-files --stage sub | Out-String) | Should -Match '^160000'
+
+        @(Get-StagedFile) | Should -Not -Contain 'sub'
+    }
 }
 
 Describe 'Get-StagedSecretFinding' {
@@ -112,5 +142,34 @@ Describe 'Get-StagedSecretFinding' {
         $findings = @(Get-StagedSecretFinding -File @('does/not/exist/in/index.md'))
         $findings | Should -Not -BeNullOrEmpty
         $findings -join "`n" | Should -Match 'could not read staged content'
+    }
+}
+
+Describe 'the hook as git actually runs it' {
+
+    It 'scans a non-ASCII path even when the console encoding is not UTF-8' {
+        # The in-process tests inherit a UTF-8 console and therefore cannot see
+        # this bug. Git runs the hook via sh -> pwsh, where the console is a
+        # legacy OEM code page; pwsh then mis-decodes git's UTF-8 stdout and
+        # the path no longer resolves. Code page 850 reproduces that exactly.
+        $repo = Join-Path $TestDrive ([guid]::NewGuid().ToString('n'))
+        New-Item -ItemType Directory -Path $repo | Out-Null
+        Push-Location $repo
+        try {
+            git init --quiet 2>&1 | Out-Null
+            git config user.email 'test@example.invalid'
+            git config user.name 'Test'
+            $umlaut = Join-Path $repo ([char]0x00FC + 'ber.md')
+            Set-Content -Path $umlaut -Value 'api_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"' -Encoding utf8
+            git add -A 2>&1 | Out-Null
+
+            $hook = Join-Path (Split-Path -Parent $PSScriptRoot) 'pre-commit.ps1'
+            $wrapper = "[Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(850); & '$hook'"
+            $output = & pwsh -NoProfile -Command $wrapper 2>&1 | Out-String
+
+            $output | Should -Match 'looks like a assigned secret'
+            $output | Should -Not -Match 'could not read staged content'
+        }
+        finally { Pop-Location }
     }
 }
