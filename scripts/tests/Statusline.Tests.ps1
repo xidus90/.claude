@@ -3,6 +3,13 @@ BeforeAll {
     $script:Config   = Join-Path $script:RepoRoot 'statusline\cship.toml'
     $script:Fixture  = Join-Path $PSScriptRoot 'fixtures\statusline-input.json'
 
+    # cship hands starship the cwd from the payload, not the one the suite runs
+    # in, so the expected folder name comes from the fixture rather than from
+    # this file's location.
+    $script:FixtureFolder = Split-Path -Leaf (
+        (Get-Content $script:Fixture -Raw | ConvertFrom-Json).workspace.project_dir
+    )
+
     # cship spawns starship as a subprocess and does not pass its own --config
     # along, so starship would fall back to its defaults and render line 1 as a
     # default prompt. One file serves both programs; the test pins the variable
@@ -83,9 +90,9 @@ lines = ["$cship.cost", "$cship.model"]' | Should -Be 2
             $script:Lines[0] | Should -Match '\d{2}:\d{2}'
         }
         It 'shows the project folder' {
-            # Rendering runs from the repo root, so starship's directory module
-            # must name that folder.
-            $script:Lines[0] | Should -Match ([regex]::Escape((Split-Path -Leaf $script:RepoRoot)))
+            # Two earlier attempts hardcoded a folder name here and each picked
+            # a different wrong one. The fixture is the only authority.
+            $script:Lines[0] | Should -Match ([regex]::Escape($script:FixtureFolder))
         }
         It 'shows the git branch' {
             $script:Lines[0] | Should -Match 'main'
