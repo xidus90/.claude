@@ -53,8 +53,24 @@ Langfassung mit allen Begründungen:
 
 Stand 2026-09-10, gelesen aus `cmd/guard` und `cmd/init` im Repo `ultraloom`.
 Beide Binaries werden aus dem Baum gebaut und sind git-ignoriert — ein altes
-`ulinit.exe` kennt einen neuen Unterbefehl nicht, also vor dem Verdacht auf
-einen Fehler `go build -o ulinit.exe ./cmd/init` fahren.
+`ulinit.exe` kennt einen neuen Unterbefehl nicht.
+
+**Es gibt zwei Stände, und sie driften.** Der Checkout baut nach
+`./ulinit.exe`, und die Hooks rufen das `ulguard`/`ulinit` auf dem PATH, in
+`~/go/bin`. Am 2026-09-10 kannte das PATH-Binary `check types` schon nicht mehr,
+während der Checkout es hatte. Nach einer Änderung an `cmd/` also **beide**
+bauen:
+
+```
+go build -o ulinit.exe ./cmd/init
+go build -o "$HOME/go/bin/ulinit.exe" ./cmd/init
+```
+
+**Nicht `go install`.** Es benennt das Ergebnis nach dem Paketverzeichnis, also
+`init.exe` und `guard.exe` — nicht `ulinit.exe` und `ulguard.exe`, die die
+Hooks rufen. Es meldet dabei Erfolg und lässt die alten Binaries unberührt
+liegen; am 2026-09-10 sind so zwei Streuner in `~/go/bin` entstanden, und die
+Bahn war danach genauso alt wie vorher. `go build -o <zielname>` ist der Weg.
 
 `ulguard` (aus `cmd/guard`) — drei der Formen lesen eine Nutzlast von stdin,
 drei nicht; gegen `cmd/guard/main.go` nachgerechnet, welche Aufrufe `stdin`
