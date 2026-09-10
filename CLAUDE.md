@@ -1,131 +1,114 @@
 # Global CLAUDE.md
 
-Diese Datei gilt für alle Projekte (User-Scope).
+Langfassung mit allen Begründungen:
+`~/.claude/archive/2026-08-22-claude-md-lang.md`.
 
-## Pläne
+## Arbeitsweise
 
-- **Für jeden Plan immer Superpowers nutzen.** Bevor ein Implementierungsplan
-  erstellt wird, die Superpowers-Skills verwenden — zuerst
-  `superpowers:brainstorming` (Anforderungen & Design klären), dann
-  `superpowers:writing-plans` für den eigentlichen Plan. Niemals einen Plan ohne
-  Superpowers schreiben.
-- **Specs und Pläne liegen im Projekt-Repo.** Eine Superpowers-Spec gehört nach
-  `docs/superpowers/specs/`, ein Implementierungsplan nach
-  `docs/superpowers/plans/` — immer im Repo des Projekts, um das es geht. Nie
-  in einem zentralen Ablageort, nie im Scratchpad. Ein Plan, der nicht neben
-  dem Code liegt, den er beschreibt, wird nicht wiedergefunden.
+- Pläne: erst `superpowers:brainstorming`, dann `superpowers:writing-plans`.
+- Specs, Pläne und SDD nach `docs/.superpowers/` im Projektrepo. Was der
+  Plan-Modus nach `~/.claude/plans/` schreibt, wird nach der Freigabe dorthin
+  kopiert.
+- Subagenten: `model: "opus"`, `effort: "low"` — beides **explizit** setzen,
+  Erben fällt sonst still auf den Sitzungswert zurück.
+- TDD. 100 % Coverage, ein Ausschluss immer mit Begründung. Statische Typen,
+  kein `Any` und kein `type: ignore` ohne Grund.
+- Python: `uv`, nie `pip`. Einzelne Skripte mit PEP-723-Header über
+  `uv run --script`, Werkzeuge über `uvx`.
+- Doku, Prosa und Kommentare deutsch; Code, Bezeichner, Commits, Branches und
+  Meldungen englisch.
+- Nie ein Modell als Mitautor im Commit. Kein `Co-Authored-By:` auf Claude,
+  Anthropic oder ein anderes LLM, keine Werbezeile im Commit-Text oder im
+  PR-Rumpf. Das schlägt den Vorgabetext des Werkzeugs; Autor ist der Mensch.
+- Kommentare auf einer anderen Abstraktionsebene als die Zeile darunter; wo ein
+  Projekt eigene Regeln hat, gelten dessen.
+- Projektanweisungen stehen in einer `AGENTS.md` im Repowurzelverzeichnis: der
+  gesamte werkzeugunabhängige Inhalt (Aufbau, Ablage, Konventionen, Befehle).
+  Die `CLAUDE.md` des Projekts verweist nur darauf und enthält sonst
+  ausschließlich das, was wirklich Claude-spezifisch ist (Skills, Subagenten,
+  Hooks, Slash-Befehle). Kein doppelter Inhalt: Was in beiden stünde, gehört in
+  die `AGENTS.md`.
 
-## Subagenten
+## Fehler, die ich sonst mache
 
-- **Subagenten laufen auf Opus.** Beim `Agent`-Tool immer `model: "opus"`
-  setzen, nie `sonnet` — auch nicht für „einfache" Teilaufgaben. Dasselbe gilt
-  für `opts.model` in Workflow-Skripten und für eigene Agent-Definitionen unter
-  `.claude/agents/`.
-- **Effort `low` ist der Standard.** `effort: "low"` beziehungsweise
-  `opts.effort: 'low'`. Höher nur, wenn die Teilaufgabe es wirklich verlangt —
-  und dann mit einer Begründung im Prompt des Subagenten.
-- Begründung: Opus mit niedrigem Effort liefert verlässlichere Ergebnisse als
-  Sonnet bei vergleichbarem Aufwand. Und gemischte Modellklassen machen die
-  Ergebnisse mehrerer Subagenten untereinander unvergleichbar — man weiß nicht
-  mehr, ob ein Unterschied aus der Aufgabe oder aus dem Modell kommt.
-- **Grenze der Mechanisierung:** Diese Regel ist bewusst *nicht* als
-  PreToolUse-Hook gebaut. Sie gilt durch Lesen, nicht durch Blocken.
+- **Kommentare und Specs gegen den Code nachrechnen, nicht lesen.** Eine
+  falsche Begründung an korrektem Code ist der häufigste Befund hier — auch in
+  Plänen und Aufgabenbriefen. Wer eine Briefbehauptung widerlegt, hat meistens
+  recht.
+- **Optionen mit Zahlen erst rechnen und messen, dann vorlegen.** Keine
+  Prosa-Gegenüberstellung mit Empfehlung.
+- **Wirkt ein Entwurf unstimmig, ein konkretes anderes Spiel danebenlegen** —
+  keinen weiteren Optionssatz.
+- **Ein Shell-Befehl, eine Frage.** Lange `&&`-Ketten überschreiten die
+  automatisch prüfbare Länge und erzwingen eine Handprüfung.
+- **Mehrzeilige Commit-Nachrichten über eine Datei und `-F`**, nie über ein
+  Heredoc. Ein `--amend` zur Reparatur löst das teure Commit-Gate aus.
+- **Nach Subagenten in einem Repo mit Remote `git ls-remote` lesen**, nicht dem
+  Bericht glauben. `git remote -v` zeigt nur die URL.
+- **Vor jedem Commit Zweig und HEAD lesen.** Eine fremde Sitzung im selben
+  Checkout leert den Index; Git schreibt dann einen leeren Commit und meldet
+  Erfolg.
 
-## Sprachen
+## ultraloom: die Go-Befehle, und wann Python zu ersetzen ist
 
-- **Dokumentation auf Deutsch.** Wikis, Specs, Design-Dokumente, README,
-  Kommentare in Konfigurationsdateien, Prosa jeder Art.
-- **Alles Maschinennahe auf Englisch.** Quellcode, Identifier, Code-Kommentare,
-  Commit-Nachrichten, Branch-Namen, Log- und Fehlermeldungen, PR-Titel und
-  -Beschreibungen, Dateinamen im Code.
-- Grenzfall: Ein Design-Dokument bleibt deutsch, auch wenn es Codebeispiele
-  enthält — der Code darin ist englisch, die Prosa drumherum deutsch.
+Stand 2026-09-10, gelesen aus `cmd/guard` und `cmd/init` im Repo `ultraloom`.
+Beide Binaries werden aus dem Baum gebaut und sind git-ignoriert — ein altes
+`ulinit.exe` kennt einen neuen Unterbefehl nicht, also vor dem Verdacht auf
+einen Fehler `go build -o ulinit.exe ./cmd/init` fahren.
 
-## Kommentare
+`ulguard` (aus `cmd/guard`) — drei der Formen lesen eine Nutzlast von stdin,
+drei nicht; gegen `cmd/guard/main.go` nachgerechnet, welche Aufrufe `stdin`
+überhaupt weitergereicht bekommen:
 
-- **Nur kommentieren, was der Code nicht hergibt.** Kein Kommentar, der die
-  Zeile darunter in Worten wiederholt. Kommentiere das *Warum*: die Absicht,
-  den nicht offensichtlichen Grund, die Fallstricke, die Entscheidung gegen
-  eine naheliegendere Lösung. Wenn ein Kommentar nötig scheint, um zu erklären
-  *was* passiert, ist meist der Code das Problem.
+- ohne Unterbefehl, `--root` — die PreToolUse-Wache, der Policy-Erzwinger
+  (**stdin**)
+- `post-edit --root` — PostToolUse (**stdin**)
+- `worktree-unlink --root` (**stdin**)
+- `status` | `explain` | `doctor`, `--root` — drei Namen, ein Codeweg; kein stdin
+- `worktree-link --root` — kein stdin
+- `worktree-remove <pfad>` — von Hand, der Pfad als Argument statt `--root`;
+  kein stdin
 
-## Tests und Qualität
+`ulinit` (aus `cmd/init`):
 
-Gilt für jedes Projekt mit Code, nicht nur für „große" Projekte.
+- ohne Unterbefehl — der Installer, mit `--root`, `--dry-run`, `--yes`,
+  `--detect-only`, `--version` und den Antwortflags
+- `check gofmt [pfade…]` — weil `gofmt -l` auch bei Befund mit 0 exitet
+- `check types [--status-file=…]` — dmypy, und räumt eine Statusdatei weg,
+  die ihren Daemon überlebt hat. **Vorbedingung:** der Aufruf ist
+  festverdrahtet auf `uv run dmypy … run -- --no-error-summary --no-pretty`
+  (`mypyArgs` in `cmd/init/check.go`). Ein Projekt, das dmypy ohne `uv` oder
+  mit anderen mypy-Flags fährt, verliert die Flags bei der Umstellung. Und die
+  Heilung selbst ist heute Windows-only: die Marker sind der Text der
+  NamedPipe, auf POSIX wirft `connect()` eine nackte `FileNotFoundError`
+- `check coverage --go-floor=N --summary=…`
+- `check commit-msg <datei>`
 
-- **TDD.** Erst der fehlschlagende Test, dann die Implementierung. Dafür die
-  Skills `superpowers:test-driven-development` und
-  `superpowers:verification-before-completion` nutzen.
-- **Unit-Tests sind Pflicht.** Jedes Modul hat ein Testmodul. Kein Feature und
-  kein Bugfix ohne Test.
-- **100 % Code-Coverage.** Gemessen, nicht geschätzt. Tragfähig nur zusammen
-  mit der Ausnahmeregel unten — ohne Ventil wäre die Zahl entweder eine Lüge
-  oder eine Bremse.
-- **Coverage-Ausschlüsse brauchen eine Begründung.** Eine Zeile darf nur mit
-  einem begründenden Kommentar ausgenommen werden — bei Python also
-  `# pragma: no cover  # <Grund>`, niemals nackt. Das Gleiche gilt für
-  übersprungene Tests (`@unittest.skip("<Grund>")`).
-- **Linting und Formatierung** laufen sauber durch, bevor etwas als fertig
-  gilt. Keine unterdrückten Regeln ohne begründenden Kommentar.
-- **Typisierung.** Statische Typen überall, wo die Sprache sie anbietet, und
-  ein Typechecker, der ohne Fehler durchläuft. Kein `Any` und kein
-  `# type: ignore` ohne begründenden Kommentar.
-- **Für all das gibt es Hooks** — siehe Abschnitt *Regeln und Hooks*. Konkret:
-  Linter und Typechecker nach dem Bearbeiten einer Quelldatei, Tests und
-  Coverage-Schwelle bevor Arbeit als fertig gilt, dazu eine Prüfung, dass zu
-  jedem Modul ein Testmodul existiert und dass Ausschlüsse begründet sind.
-- **Grenze der Mechanisierung:** TDD selbst ist nicht prüfbar — kein Skript
-  kann feststellen, dass der Test *vorher* geschrieben wurde. Erzwingbar sind
-  nur die Artefakte. Und wo eine Sprache kein Coverage-Werkzeug hat (aktuell
-  GDScript), gilt ersatzweise „jedes Modul hat Tests", und die Lücke wird als
-  bekannte Einschränkung dokumentiert statt stillschweigend übergangen.
+**Wo eine Go-Form existiert und ein Projekt noch die Python-Form ruft — in
+`.claude/settings.json` oder `.ultraloom/config.toml` —, ist zu migrieren.**
+Der Grund ist gemessen, nicht vermutet: 10 warme Läufe am 2026-09-10 ergaben
+für `uv run --script` auf einem leeren PEP-723-Skript 55 ms Median gegen 31 ms
+für `ulinit`, und der Paket-Einstiegspunkt `ultraloom …` kostet ~253 ms gegen
+~142 ms für das Binary daneben (Messung vom 2026-09-08). Bei einem Hook, der an
+jedem Edit hängt, ist das der ganze Unterschied.
 
-**Python-Werkzeuge** (per `uvx`, siehe Abschnitt *Python*): `ruff` für Linting
-und Formatierung, `mypy` für Typen, `coverage` für die Messung.
+**Vorher aber nachrechnen, ob die Go-Form dieselbe Arbeit tut. Zweimal tut sie
+es gar nicht, und `check types` nur unter der Vorbedingung oben:**
 
-## Regeln und Hooks
+- `ulinit check commit-msg` ist **kein** Ersatz für `ultraloom commit-msg`. Die
+  Go-Form ist eine festverdrahtete Wortlistenprüfung auf Englisch, nur die
+  erste Zeile (`internal/commit/language.go`); die Python-Form liest `[commit]`
+  aus der Konfiguration, kennt `--language en|de` und `--calibrate N`. Ein
+  deutschsprachiges Projekt zerbricht an der Umstellung.
+- `ulinit check coverage` ist halbgebaut: es prüft nur einen `--summary`, den
+  man ihm reicht, misst selbst nichts und **gibt 0 zurück, wenn `--summary`
+  leer ist** (`cmd/init/check.go`). Ein Tor, das grün meldet, wenn man ihm
+  nichts gibt. `hooks/coverage-check.py` bleibt vorerst der Weg.
 
-- **Was maschinell prüfbar ist, wird als Hook oder Skript gebaut.** Jede Regel
-  in einer CLAUDE.md, die deterministisch entscheidbar ist, bekommt zusätzlich
-  eine automatische Prüfung. Eine Regel, die nur als Prosa existiert, obwohl
-  ein Skript sie prüfen könnte, wird über genügend Sessions zuverlässig
-  gebrochen.
-- Das entfernt die Regel **nicht** aus der CLAUDE.md: Erzwingen ersetzt
-  Anleiten nicht. Eine Regel, die nur der Blocker kennt, wird durch Scheitern
-  gelernt — Versuch, Blocker, Fehlermeldung, zweiter Versuch. Beides gilt,
-  außer die Regel kostet mehr Platz als der Fehlschlag.
-- Was Urteilsvermögen erfordert, bleibt bewusst Prosa. Ein Skript, das darüber
-  entscheidet, erzeugt Scheinsicherheit.
+**Wofür es gar keine Go-Form gibt — hier ist nichts zu migrieren:** die vier
+Sitzungshooks `ultraloom hook session-start|stop|subagent-start|subagent-stop`
+und `ultraloom run|show|resume|replay|check`. Nur die beiden Pro-Edit-Hooks
+sind Go.
 
-## Python
 
-- **Python >= 3.13.** Neue Projekte und Skripte setzen mindestens 3.13 voraus.
-  Konkret: `requires-python = ">=3.13"` in `pyproject.toml` beziehungsweise im
-  PEP-723-Header, `target-version = "py313"` für ruff, `python_version = 3.13`
-  für mypy. Wo ein Werkzeug den Interpreter selbst wählt, wird die Version
-  explizit mitgegeben statt auf einen Standard vertraut.
-- **Immer `uv`, niemals `pip`.** Für Abhängigkeiten, virtuelle Umgebungen und
-  das Ausführen von Skripten. Kein `pip install`, kein `python -m venv`, keine
-  `requirements.txt` als primäre Quelle.
-  - Projekte: `uv add`, `uv sync`, `uv run`, Abhängigkeiten in `pyproject.toml`
-  - Einzelne Skripte: PEP-723-Header mit `dependencies` im Skript selbst,
-    Aufruf über `uv run --script <datei>`. Damit ist ein Skript ohne
-    Vorinstallation lauffähig.
-  - Werkzeuge: `uvx <werkzeug>` statt globaler Installation
-- **Imports stehen oben.** Alle `import`- und `from ... import`-Anweisungen
-  gehören an den Dateianfang, auf Modulebene — nicht in Funktionen, Methoden
-  oder Klassenkörper.
-  - Wenn es wirklich keinen anderen Weg gibt (zirkulärer Import, teure oder
-    optionale Abhängigkeit, Import mit Seiteneffekt), darf ein Import lokal
-    stehen — dann aber **zwingend mit einem Kommentar, der die Begründung
-    nennt**. Ein lokaler Import ohne Begründung ist ein Fehler.
-  - Für rein typbezogene Zyklen ist der `TYPE_CHECKING`-Guard am Dateianfang
-    die richtige Lösung, kein lokaler Import.
 
-```python
-def render(data: dict[str, int]) -> str:
-    # Local import: pandas costs ~1s to import and only this path needs it.
-    import pandas as pd
-
-    return pd.DataFrame(data).to_string()
-```
