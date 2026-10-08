@@ -814,3 +814,69 @@ Umsetzung laufen deshalb in einer Sitzung im Repo `~/.claude` (Worktree
 4. **Merge-Tor**: Code- und Security-Review müssen grün sein vor jedem
    Rebase oder Merge auf den Feature-Zweig (Abschnitt 4).
 5. **security-reviewer** bleibt in der ersten Ausbaustufe.
+6. **cleanup-Tor** (Nachtrag, 2026-10-08): Die Prüfung „das jüngste
+   `[verify:final]` ist `pass`“ läuft beim `TaskCreated` von `[cleanup]`, wo
+   die Urteile noch liegen. `TaskCompleted` von `[cleanup]` prüft nur, dass
+   kein Worktree des Laufs mehr eingetragen ist, kein ungelisteter
+   `team/<lauf>/*`-Zweig steht und der Laufordner fehlt. Der Widerspruch in
+   Abschnitt 6 (Urteil lesen, nachdem der Ordner gelöscht ist) ist damit
+   aufgelöst.
+
+## 15. Nachtrag beim Planen (2026-10-08)
+
+Beim Bau eines Prototyps für den Plan fielen diese Festlegungen. Sie
+präzisieren die Abschnitte 5, 6 und 8; wo sie einen Satz dort ändern, steht
+es dabei.
+
+1. **Ablage des Hooks.** `scripts/team-gate.py` ist der Einstieg (PEP 723,
+   ohne Abhängigkeiten); die Task-Tore liegen in `scripts/teamgate_tasks.py`,
+   die Befehlsprüfung in `scripts/teamgate_cmd.py`, Tests unter
+   `scripts/tests/teamgate/`. `uv run --script` legt das Skriptverzeichnis auf
+   den Importpfad. Gemessen: warm ~115 ms je Aufruf, `python -S` ~60 ms; beide
+   weit unter dem Timeout von 30 s.
+2. **`supersede`** nimmt `<gen>:<task_id>`, weil Task-IDs je Generation neu
+   zählen können (Rauchtest 10). Ein Schlüssel ohne Generation wird
+   abgelehnt.
+3. **Wurzeln in Titeln.** `[verify:final]` trägt immer die Wurzel `F`,
+   `[verify:hunt]` immer eine Wurzel `B<n>`. Ein `[impl]` ist für jede Wurzel
+   zulässig, wie Abschnitt 5 es schreibt.
+4. **Was eine Wurzel ist.** Eine Wurzel entsteht mit ihrem ersten `[impl]`
+   oder `[fix]`. Ein Fund `B<n>`, den `verify:hunt` widerlegt oder als
+   Dublette markiert, wird nie Wurzel und hält `final` nicht auf.
+5. **`duplicate_of`** ist ein Feld eines Befunds in `verify:hunt`, neben
+   `status` (`confirmed`/`refuted`), kein eigener Status.
+6. **`verify:review`** nennt in `judges` die jeweils jüngste abgeschlossene
+   `review:code` und `review:security` der Wurzel; ältere Runden werden
+   abgelehnt.
+7. **`verify:rebase`.** `inherits` ist nur bei `pass` Pflicht. Beim
+   Abschließen prüft der Hook, dass `inherits` genau das Trio nennt, das für
+   `rebased_from` grün war (auch über einen früheren `verify:rebase`
+   hinweg). Haben sich die eigenen Commits geändert, widerlegt der verifier
+   den Claim „eigene Commits unverändert“ und urteilt `fail`; dann laufen
+   beide Reviews neu.
+8. **Urteils-Referenz.** Format und Regeln aus Abschnitt 5 stehen für die
+   Rollen in `docs/agent-team/verdicts.md` (englisch, sie instruiert ein
+   LLM); die Rümpfe verweisen darauf, statt die Regeln dreizehnmal zu
+   wiederholen.
+9. **Befehlsprüfung, über die Tabelle hinaus.** Verweigert werden auch
+   `git config core.hooksPath …` (schreibend), `git branch -M`/`-C` auf den
+   Feature-Zweig, und Befehle in `$(…)`, Backticks, `{ … }`-Blöcken und in
+   `pwsh -EncodedCommand` werden mitgeprüft. Fehlt `run.json` (Laufordner
+   weg), kennt der Hook den Feature-Zweig nicht; dann verweigern
+   `git branch --force` und `git reset --hard` immer (fail-closed). Werte von
+   `git commit -m`/`-F`/`--message` zählen nicht als Optionen, `-m -n` ist
+   eine Nachricht.
+10. **`PostToolUse` ohne Laufordner** endet mit 0 und schreibt nichts.
+11. **Rückfall zu Rauchtest 9** ist im Code vorbereitet und abgeschaltet:
+    Beginnt die Beschreibung eines Tasks mit `WAITING:`, schreibt
+    `TaskCompleted` nichts ins Register und endet mit 0. Eingeschaltet wird
+    er nur, wenn Rauchtest 9 durchfällt.
+12. **Starter.** Die Hook-Einträge rufen
+    `uv run --script "<scripts>/team-gate.py" --run "<lauf>" <ereignis>`; die
+    Deny-Regeln haben die Form `Bash(git push:*)` und `PowerShell(git push:*)`
+    (ob sie greifen, prüft Rauchtest 7). `--teammate-mode` steht nicht in
+    `claude --help` (2.1.293), wird aber angenommen (Probe:
+    `claude --teammate-mode in-process mcp list` läuft, eine unbekannte Option
+    bricht ab).
+13. **Rückfragen der Teammates** laufen über `TaskUpdate` auf `pending` mit
+    Notiz und `SendMessage` (Abschnitt 6); die Rümpfe sagen es so.
