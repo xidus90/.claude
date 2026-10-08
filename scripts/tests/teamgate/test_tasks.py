@@ -882,3 +882,29 @@ def test_a_lock_broken_by_another_hook_releases_quietly(world: World, monkeypatc
     with tg.locked(world.run, wait_s=1):
         pass
     assert not lock.exists()
+
+
+def test_a_lock_being_deleted_counts_as_held(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    real_open = os.open
+    calls: list[str] = []
+
+    def pending_once(path: str | os.PathLike[str], flags: int, mode: int = 0o777) -> int:
+        calls.append(str(path))
+        if len(calls) == 1:
+            raise PermissionError(13, "delete pending")
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(os, "open", pending_once)
+    ran = False
+    with tg.locked(world.run, wait_s=1):
+        ran = True
+    assert ran and len(calls) == 2
+
+
+def test_a_lock_that_stays_denied_ends_at_the_deadline(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    def denied(path: str | os.PathLike[str], flags: int, mode: int = 0o777) -> int:
+        raise PermissionError(13, "denied")
+
+    monkeypatch.setattr(os, "open", denied)
+    with pytest.raises(GateError, match="register lock held"):
+        tg.locked(world.run, wait_s=0.1).__enter__()

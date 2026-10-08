@@ -147,6 +147,11 @@ def locked(run: Run, wait_s: float = 10.0) -> Iterator[None]:
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             break
+        except PermissionError:
+            # Windows refuses to open a file whose deletion is pending: another hook is releasing it.
+            if time.monotonic() > deadline:
+                raise GateError(f"register lock held for more than {wait_s} s: {lock}") from None
+            time.sleep(0.05)
         except FileExistsError:
             age = _lock_age(lock)
             if age is None:
