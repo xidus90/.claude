@@ -74,3 +74,12 @@ def test_the_script_runs_as_a_hook_process(world: World) -> None:
     assert "Prüfung" in (world.run.dir / "tasks.jsonl").read_text(encoding="utf-8")
     out = subprocess.run([*HOOK, "--run", str(world.run.dir), "supersede", "1:x"], capture_output=True, check=False)
     assert (out.returncode, out.stderr.decode("utf-8").splitlines()) == (2, ["no open task g1 x in the register"])
+
+
+# --- pre-tool-use (Task 3) ---
+
+
+def test_pre_tool_use_is_dispatched(world: World, capsys: pytest.CaptureFixture[str]) -> None:
+    assert call(world, "pre-tool-use", {"tool_name": "Bash", "tool_input": {"command": "git push"}}) == 2
+    assert capsys.readouterr().err == "git push is the human's\n"
+    assert call(world, "pre-tool-use", {"tool_name": "PowerShell", "tool_input": {"command": "git status"}}) == 0
