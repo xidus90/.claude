@@ -239,6 +239,14 @@ DENY_BASH = [
     "select GIT_DIR in x; do git status; done",
     "git pull -t $x",
     "git merge --squash $x",
+    # fix round 4: decided on parsed words, in any order
+    'git log | while read -r l; do echo "$l"; done',
+    "f() { git status; }; read GIT_DIR < x; f",
+    "read GIT_DIR < x; g''it status",
+    "time read GIT_DIR < x; git status",
+    "coproc read GIT_DIR; git status",
+    "getopts ab GIT_DIR; git status",
+    "read GIT_DIR < x; bash -c 'git status'",
 ]
 
 ALLOW_BASH = [
@@ -327,7 +335,10 @@ ALLOW_BASH = [
     "git checkout -fb other",
     "git pull",
     "for f in a b; do echo $f; done",
-    'git log | while read -r l; do echo "$l"; done',
+    'while read -r l; do echo "$l"; done < f',
+    "x=$(git rev-parse HEAD)",
+    'git commit -m "msg $x"',
+    'for f in a b; do cat "$f"; done',
     'git merge -m "fix $x" topic',
     "pwsh -CommandWithArgs 'git status'",
 ]
@@ -407,6 +418,8 @@ DENY_PWSH = [
     "Set-Variable -Name GIT_DIR -Value x; git status",
     "[Environment]::SetEnvironmentVariable('GIT_DIR', 'x'); git status",
     "[Environment]::SetEnvironmentVariable($n, 'x'); Remove-Item -Recurse \"$env:TEAM_RUN_DIR/evidence\"",
+    "sv $n x; git status",
+    "${env:GIT_DIR}='x'; git status",
     "$env:GIT_CONFIG_GLOBAL = 'x'; git commit -m y",
     "$env:TEAM_RUN_DIR = 'C:/'; Remove-Item -Recurse \"$env:TEAM_RUN_DIR/evidence\"",
 ]
@@ -437,6 +450,8 @@ ALLOW_PWSH = [
     "pwsh -cwa 'git status'",
     "git log @{u}..HEAD",
     "Set-Item env:FOO x; git status",
+    "sv name x; git status",
+    "[Environment]::SetEnvironmentVariable('FOO', 'x'); git status",
 ]
 
 
@@ -553,3 +568,7 @@ def test_a_junction_is_judged_by_its_target(world: World, tmp_path: Path) -> Non
 
 def test_paths_on_two_drives_are_not_within_each_other() -> None:
     assert tc.within(Path("C:/a"), Path("D:/a")) is False
+
+
+def test_nested_scan_too_deep_counts_as_guarded() -> None:
+    assert tc._guarded_nested([(tc.BASH, "true")], 9) is True

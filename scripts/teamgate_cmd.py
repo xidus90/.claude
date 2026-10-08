@@ -346,7 +346,7 @@ def unwrap(words: list[str], dialect: str) -> tuple[list[str], list[tuple[str, s
     return words, nested
 
 
-_BASH_KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "!"}  # the command follows
+_BASH_KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "!", "time", "coproc"}  # the command follows
 
 _LAUNCHERS: dict[str, frozenset[str]] = {
     # launcher -> its options that take the next word as value
@@ -355,7 +355,6 @@ _LAUNCHERS: dict[str, frozenset[str]] = {
     "exec": frozenset(),
     "command": frozenset(),
     "builtin": frozenset(),
-    "time": frozenset(),
     "nice": frozenset({"-n", "--adjustment"}),
     "timeout": frozenset({"-s", "-k", "--signal", "--kill-after"}),
     "xargs": frozenset({"-I", "-n", "-L", "-P", "-d", "-E", "-s", "-a", "--max-args", "--max-lines",
@@ -775,6 +774,7 @@ _NAMED_ASSIGNMENT = (
     r"|(?:^|[;&|\n(){}])\s*(?:set-item|new-item|si|ni)\s[^;|\n]*?\benv:([A-Za-z_]\w*)"
     r"|(?:^|[;&|\n(){}])\s*(?:set-variable|sv)\s+(?:-name\s+)?['\"]?([A-Za-z_]\w*)"
     r"|SetEnvironmentVariable\(\s*['\"]([A-Za-z_]\w*)"
+    r"|\$\{env:([A-Za-z_]\w*)\}\s*="
 )
 _XARGS_REFUSED = {"git", "gh", "rm", "rd", "rmdir"} | _REMOVE_PS
 
@@ -817,6 +817,41 @@ def _opaque_launcher(exe: str, args: list[str], dialect: str) -> str | None:
     return None
 
 
+_UNPARSED_SETTERS = {"read", "declare", "typeset", "local", "readonly", "mapfile", "readarray", "getopts"}
+_PS_SETTERS = {"set-variable", "sv", "set-item", "si", "new-item", "ni"}
+_GUARDED = {"git", "gh", "rm", "rd", "rmdir", "find"} | _REMOVE_PS
+
+
+def _guarded_nested(nested: list[tuple[str, str]], depth: int) -> bool:
+    """git/gh/a delete inside nested command text ($(…), bash -c, launchers)."""
+    if depth > 8:
+        return True  # too deep to tell: fail closed
+    return any(_assignment_scan(tokenize(text, d), d, depth + 1)[1] for d, text in nested)
+
+
+def _assignment_scan(parsed: Parsed, dialect: str, depth: int = 0) -> tuple[bool, bool]:
+    """Over the parsed segments, in any order: (a form sets names the check cannot read, git/gh/a delete runs)."""
+    unparsed = False
+    guarded = _guarded_nested(parsed.nested, depth)
+    for idx, seg in enumerate(parsed.segments):
+        words, nested = unwrap(seg.words, dialect)
+        guarded = guarded or _guarded_nested(nested, depth)
+        if not words:
+            continue
+        flags = seg.opaque[len(seg.opaque) - len(words) :]
+        exe, args = exe_name(words[0]), words[1:]
+        guarded = guarded or exe in _GUARDED
+        if exe in _UNPARSED_SETTERS or (exe == "printf" and "-v" in args):
+            unparsed = True
+        if dialect == PWSH and exe in _PS_SETTERS:
+            names = [(w, f) for w, f in zip(args, flags[1:], strict=True) if not w.startswith("-")]
+            unparsed = unparsed or not names or unknown(*names[0])
+        following = parsed.segments[idx + 1 : idx + 2]
+        if exe.endswith("::setenvironmentvariable") and following:
+            unparsed = unparsed or unknown(following[0].words[0], following[0].opaque[0])
+    return unparsed, guarded
+
+
 def check_command(command: str, dialect: str, ctx: Context, depth: int = 0) -> str | None:
     if depth > 8:
         return "command nests launchers too deeply to check"
@@ -824,20 +859,15 @@ def check_command(command: str, dialect: str, ctx: Context, depth: int = 0) -> s
         return "cannot tell which command this runs"
     assigned = {m.upper() for m in re.findall(r"(?:^|[\s;&|(){}])(?:\$(?:env:)?)?([A-Za-z_]\w*)\s*=(?!=)", command, re.IGNORECASE)}
     assigned |= {next(g for g in m.groups() if g).upper() for m in re.finditer(_NAMED_ASSIGNMENT, command, re.IGNORECASE)}
-    unparsed = re.search(
-        r"(?:^|[;&|\n(){}])\s*(?:(?:while|until|if|then|do|else|elif|!)\s+)*(?:read|declare|typeset|local|readonly|mapfile|readarray)\b"
-        r"|SetEnvironmentVariable\(\s*[^'\"\s]",
-        command, re.IGNORECASE,
-    )
-    # Names these forms set are not parsed: every variable is unknown to what runs after them.
-    if unparsed and re.search(r"\b(?:git|gh|rm|rd|rmdir|remove-item|ri|del|erase|find)\b", command[unparsed.end() :], re.IGNORECASE):
-        assigned.add("*")
+    parsed = tokenize(command, dialect)
+    unparsed, guarded = _assignment_scan(parsed, dialect)
+    if unparsed and guarded:
+        assigned.add("*")  # a name set by an unparsed form may be any variable git or a delete reads
     ctx = replace(ctx, assigned=ctx.assigned | assigned)
     for m in _DIRECTORY_DELETE.finditer(command):
         reason = check_delete([m.group("path").strip("'\"")], ctx, ctx.cwd)
         if reason:
             return reason
-    parsed = tokenize(command, dialect)
     for sub_dialect, sub in parsed.nested:
         reason = check_command(sub, sub_dialect, ctx, depth + 1)
         if reason:
