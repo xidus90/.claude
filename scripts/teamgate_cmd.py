@@ -13,7 +13,7 @@ import os
 import re
 import subprocess
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from teamgate_tasks import GateError, Run
@@ -25,6 +25,8 @@ BASH, PWSH = "bash", "powershell"
 class Segment:
     words: list[str]
     piped: bool = False  # the previous segment's output flows into this one
+    # Per word: the shell expands something in it ($, backquote, unquoted glob, splat).
+    opaque: list[bool] = field(default_factory=list)
 
 
 @dataclass
@@ -60,24 +62,27 @@ def _closing(text: str, i: int) -> int:
 def tokenize(text: str, dialect: str) -> Parsed:
     out = Parsed()
     words: list[str] = []
+    flags: list[bool] = []
     word: list[str] = []
     in_word = False
+    opaque = False
     piped = False
     escape = "`" if dialect == PWSH else "\\"
 
     def end_word() -> None:
-        nonlocal in_word
+        nonlocal in_word, opaque
         if in_word:
             words.append("".join(word))
+            flags.append(opaque)
             word.clear()
-            in_word = False
+            in_word = opaque = False
 
     def end_segment(next_piped: bool) -> None:
-        nonlocal words, piped
+        nonlocal words, flags, piped
         end_word()
         if words:
-            out.segments.append(Segment(words, piped))
-        words = []
+            out.segments.append(Segment(words, piped, flags))
+        words, flags = [], []
         piped = next_piped
 
     i, n = 0, len(text)
@@ -111,6 +116,8 @@ def tokenize(text: str, dialect: str) -> Parsed:
                     buf.append(text[j + 1])
                     j += 2
                     continue
+                if text[j] == "$":
+                    opaque = True
                 if text[j] == "$" and text[j + 1 : j + 2] == "(":
                     k = _closing(text, j + 1)
                     out.nested.append((dialect, text[j + 2 : k]))
@@ -122,6 +129,8 @@ def tokenize(text: str, dialect: str) -> Parsed:
                     if k < 0:
                         raise GateError("unterminated backquote")
                     out.nested.append((dialect, text[j + 1 : k]))
+                    buf.append(text[j : k + 1])
+                    opaque = True
                     j = k + 1
                     continue
                 buf.append(text[j])
@@ -135,13 +144,15 @@ def tokenize(text: str, dialect: str) -> Parsed:
             k = _closing(text, i + 1)
             out.nested.append((dialect, text[i + 2 : k]))
             word.append(text[i : k + 1])
-            in_word = True
+            in_word = opaque = True
             i = k + 1
         elif c == "`" and dialect == BASH:
             k = text.find("`", i + 1)
             if k < 0:
                 raise GateError("unterminated backquote")
             out.nested.append((dialect, text[i + 1 : k]))
+            word.append(text[i : k + 1])
+            in_word = opaque = True
             i = k + 1
         elif c == "#" and not in_word:
             while i < n and text[i] != "\n":
@@ -149,7 +160,7 @@ def tokenize(text: str, dialect: str) -> Parsed:
         elif c in " \t\r":
             end_word()
             i += 1
-        elif c in "\n;(){}":
+        elif c in "\n;()" or (c in "{}" and _groups(text, i, dialect, in_word)):
             end_segment(False)
             i += 1
         elif c == "|":
@@ -167,6 +178,7 @@ def tokenize(text: str, dialect: str) -> Parsed:
                 i += 1
             elif dialect == PWSH and not in_word and not words:
                 words.append("&")  # call operator
+                flags.append(False)
                 i += 1
             elif in_word and word and word[-1] in "<>":
                 word.append(c)
@@ -175,20 +187,32 @@ def tokenize(text: str, dialect: str) -> Parsed:
                 end_segment(False)
                 i += 1
         else:
+            if c == "$" or (dialect == BASH and c in "*?[") or (dialect == PWSH and c == "@" and not in_word):
+                opaque = True
             word.append(c)
             in_word = True
             i += 1
     end_segment(False)
     for seg in out.segments:
-        seg.words = _drop_redirects(seg.words)
+        seg.words, seg.opaque = _drop_redirects(seg.words, seg.opaque)
     out.segments = [s for s in out.segments if s.words]
     return out
 
 
-def _drop_redirects(words: list[str]) -> list[str]:
+def _groups(text: str, i: int, dialect: str, in_word: bool) -> bool:
+    """Whether a brace at text[i] groups commands; in Bash `{}` and `${x}` are words."""
+    if dialect == PWSH:
+        return True
+    if in_word:
+        return False
+    return text[i] == "}" or text[i + 1 : i + 2] in ("", " ", "\t", "\r", "\n")
+
+
+def _drop_redirects(words: list[str], flags: list[bool]) -> tuple[list[str], list[bool]]:
     kept: list[str] = []
+    kept_flags: list[bool] = []
     skip = False
-    for w in words:
+    for w, f in zip(words, flags, strict=True):
         if skip:
             skip = False
             continue
@@ -198,7 +222,16 @@ def _drop_redirects(words: list[str]) -> list[str]:
         if re.match(r"^[0-9]*(?:>>?|<)\S", w):
             continue  # >file
         kept.append(w)
-    return kept
+        kept_flags.append(f)
+    return kept, kept_flags
+
+
+_KNOWN_VAR = re.compile(r"\$\{?(?:env:)?(?:TEAM_RUN_DIR|HOME|USERPROFILE)(?![A-Za-z0-9_])\}?", re.IGNORECASE)
+
+
+def unknown(word: str, opaque: bool) -> bool:
+    """The shell turns the word into something the check cannot read (spec 6: refuse)."""
+    return opaque and (bool(re.search(r"[`*?\[@]", word)) or "$" in _KNOWN_VAR.sub("", word))
 
 
 def exe_name(word: str) -> str:
@@ -224,11 +257,24 @@ def unwrap(words: list[str], dialect: str) -> tuple[list[str], list[tuple[str, s
             words = words[1:]
         elif dialect == BASH and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", first):
             words = words[1:]
-        elif exe in ("env", "nohup", "exec", "command", "builtin", "time", "nice"):
+        elif exe in _LAUNCHERS:
             rest = words[1:]
             while rest and (rest[0].startswith("-") or re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", rest[0])):
-                rest = rest[2:] if rest[0] in ("-u", "--unset", "-C", "--chdir", "-n") else rest[1:]
+                rest = rest[2:] if rest[0] in _LAUNCHERS[exe] else rest[1:]
+            if exe == "timeout":
+                rest = rest[1:]  # the duration
+            if exe == "watch":
+                nested.append((BASH, " ".join(rest)))  # watch hands its words to sh -c
+                return [], nested
             words = rest
+        elif exe == "find":
+            starts = list(itertools.takewhile(lambda a: not a.startswith(("-", "(", "!")), words[1:])) or ["."]
+            for idx, w in enumerate(words):
+                if w in ("-exec", "-execdir", "-ok", "-okdir"):
+                    command = list(itertools.takewhile(lambda a: a not in (";", "+"), words[idx + 1 :]))
+                    for start in starts:
+                        nested.append((dialect, " ".join(_quote(a.replace("{}", start)) for a in command)))
+            return words, nested
         elif exe == "cmd":
             for idx, w in enumerate(words[1:], start=1):
                 if w.lower() in ("/c", "/k", "/r"):
@@ -244,7 +290,8 @@ def unwrap(words: list[str], dialect: str) -> tuple[list[str], list[tuple[str, s
         elif exe in ("pwsh", "powershell"):
             for idx, w in enumerate(words[1:], start=1):
                 lw = w.lower()
-                if (lw == "-c" or _starts(lw, "-command", 3)) and idx + 1 < len(words):
+                command_flag = lw in ("-c", "-cwa") or _starts(lw, "-command", 3) or _starts(lw, "-commandwithargs", 9)
+                if command_flag and idx + 1 < len(words) and words[idx + 1] != "-":
                     nested.append((PWSH, " ".join(words[idx + 1 :])))
                     return [], nested
                 if (lw in ("-e", "-ec") or _starts(lw, "-encodedcommand", 4)) and idx + 1 < len(words):
@@ -257,6 +304,8 @@ def unwrap(words: list[str], dialect: str) -> tuple[list[str], list[tuple[str, s
             return words, nested
         elif exe in ("invoke-expression", "iex"):
             args = [w for w in words[1:] if not _starts(w, "-command", 2)]
+            if not args:
+                return words, nested  # the command comes from the pipe
             nested.append((PWSH, " ".join(args)))
             return [], nested
         elif exe in ("start-process", "saps", "start"):
@@ -290,6 +339,24 @@ def unwrap(words: list[str], dialect: str) -> tuple[list[str], list[tuple[str, s
     return words, nested
 
 
+_LAUNCHERS: dict[str, frozenset[str]] = {
+    # launcher -> its options that take the next word as value
+    "env": frozenset({"-u", "--unset", "-C", "--chdir"}),
+    "nohup": frozenset(),
+    "exec": frozenset(),
+    "command": frozenset(),
+    "builtin": frozenset(),
+    "time": frozenset(),
+    "nice": frozenset({"-n", "--adjustment"}),
+    "timeout": frozenset({"-s", "-k", "--signal", "--kill-after"}),
+    "xargs": frozenset({"-I", "-n", "-L", "-P", "-d", "-E", "-s", "-a", "--max-args", "--max-lines",
+                        "--max-procs", "--delimiter", "--eof", "--max-chars", "--arg-file"}),
+    "stdbuf": frozenset({"-i", "-o", "-e", "--input", "--output", "--error"}),
+    "sudo": frozenset({"-u", "-g", "-C", "-D", "-h", "-p", "-U", "-r", "-t", "-T", "--user", "--group"}),
+    "watch": frozenset({"-n", "--interval"}),
+}
+
+
 def _quote(word: str) -> str:
     return "'" + word.replace("'", "''") + "'" if re.search(r"\s", word) else word
 
@@ -299,11 +366,16 @@ def _quote(word: str) -> str:
 _VAR = re.compile(r"\$\{?(?:env:)?([A-Za-z_][A-Za-z0-9_]*)\}?|%([A-Za-z_][A-Za-z0-9_]*)%", re.IGNORECASE)
 
 
-def resolve(word: str, cwd: Path, run: Run) -> Path | None:
-    """The real path a command word names, or None when it cannot be known."""
+def resolve(word: str, cwd: Path, run: Run, assigned: frozenset[str] = frozenset()) -> Path | None:
+    """The real path a command word names, or None when it cannot be known.
+
+    A variable the command itself assigns has a value the hook cannot see.
+    """
 
     def var(m: re.Match[str]) -> str:
         name = m.group(1) or m.group(2)
+        if name.upper() in assigned:
+            raise KeyError(name)
         if name.upper() == "TEAM_RUN_DIR":
             return str(run.dir)
         if name.upper() in ("HOME", "USERPROFILE"):
@@ -350,6 +422,7 @@ class Context:
     run: Run
     cwd: Path
     feature: str | None
+    assigned: frozenset[str] = frozenset()  # upper-cased names the command assigns
 
     def worktrees(self, repo: Path) -> list[Path]:
         out = subprocess.run(
@@ -427,16 +500,30 @@ def _positionals(args: list[str], value_shorts: str = "", value_longs: set[str] 
     return out
 
 
-def check_git(args: list[str], ctx: Context, cwd: Path) -> str | None:
+_GIT_ENV = re.compile(r"^GIT_(?:CONFIG(?:_COUNT|_KEY_\w*|_VALUE_\w*|_PARAMETERS|_GLOBAL|_SYSTEM)?|DIR|WORK_TREE)$")
+
+
+def check_git(args: list[str], ctx: Context, cwd: Path, unread: frozenset[str] = frozenset()) -> str | None:
+    """`unread` holds the words the shell expands into something the check cannot read."""
+    if any(_GIT_ENV.match(name) for name in ctx.assigned):
+        return "git with GIT_CONFIG_*/GIT_DIR/GIT_WORK_TREE set by the command"
+    other_tree = False
     i = 0
     while i < len(args) and args[i].startswith("-"):
         a = args[i]
         name, _, inline = a.partition("=")
         value = inline if inline else (args[i + 1] if name in _GIT_GLOBAL_WITH_VALUE and i + 1 < len(args) else "")
-        if name in ("-c", "--config-env") and value.split("=", 1)[0].lower() == "core.hookspath":
-            return "git -c core.hooksPath bypasses the hooks"
+        if name in ("-c", "--config-env"):
+            key = value.split("=", 1)[0].lower()
+            if a in unread or value in unread:
+                return "cannot tell which command this runs"
+            if key == "core.hookspath":
+                return "git -c core.hooksPath bypasses the hooks"
+            if key.startswith("alias."):
+                return "git -c alias.* defines a command the check cannot see"
+        other_tree = other_tree or name in ("--git-dir", "--work-tree")
         if name == "-C" and value:
-            target = resolve(value, cwd, ctx.run)
+            target = resolve(value, cwd, ctx.run, ctx.assigned)
             if target is None:
                 return f"cannot resolve git -C {value}"
             cwd = target
@@ -444,15 +531,19 @@ def check_git(args: list[str], ctx: Context, cwd: Path) -> str | None:
     if i >= len(args):
         return None
     sub, rest = args[i].lower(), args[i + 1 :]
+    if args[i] in unread or any(p in unread for p in _positionals(rest)):
+        return "cannot tell which command this runs"
 
-    if sub == "push":
-        return "git push is the human's"
+    if sub in ("push", "send-pack", "http-push"):
+        return f"git {sub} is the human's"
     if sub in ("commit-tree", "update-ref"):
         return f"git {sub} bypasses the commit gate"
     if sub == "config" and any(a.lower() == "core.hookspath" for a in rest) and not {"--get", "--get-all", "get", "-l", "--list"} & set(rest):
         return "git config core.hooksPath bypasses the hooks"
-    if sub == "commit":
-        if "n" in _shorts(rest, value="mFcCt", stuck="uS", value_longs=_COMMIT_VALUE_LONGS):
+    if sub in ("checkout", "switch"):
+        return _check_force_create(sub, rest, ctx)
+    if sub in ("commit", "merge", "am"):
+        if sub == "commit" and "n" in _shorts(rest, value="mFcCt", stuck="uS", value_longs=_COMMIT_VALUE_LONGS):
             return "git commit -n skips the commit gate"
         skip = False
         for a in rest:
@@ -464,12 +555,14 @@ def check_git(args: list[str], ctx: Context, cwd: Path) -> str | None:
             skip = a in _COMMIT_VALUE_LONGS
             # Every abbreviation git could read as --no-verify (--no-v is ambiguous, still refused).
             if _starts(a.split("=", 1)[0], "--no-verify", 6):
-                return "git commit --no-verify skips the commit gate"
+                return f"git {sub} --no-verify skips the commit gate"
         return None
     if sub == "branch":
         return _check_branch(rest, ctx)
     if sub == "reset":
         if any(_starts(a, "--hard", 3) for a in rest):
+            if other_tree:
+                return "git reset --hard with --git-dir/--work-tree cannot be checked"
             return _check_reset(cwd, ctx)
         return None
     if sub == "worktree" and rest and rest[0] == "remove":
@@ -478,7 +571,7 @@ def check_git(args: list[str], ctx: Context, cwd: Path) -> str | None:
             return "git worktree remove --force can drop unsaved work"
         root = Path(os.path.realpath(ctx.run.dir / "worktrees"))
         for p in _positionals(opts):
-            target = resolve(p, cwd, ctx.run)
+            target = resolve(p, cwd, ctx.run, ctx.assigned)
             if target is None or not within(target, root) or target == root:
                 return f"git worktree remove outside {root}: {p}"
         return None
@@ -488,6 +581,29 @@ def check_git(args: list[str], ctx: Context, cwd: Path) -> str | None:
         if set(letters) & {"x", "X", "d"} or forces >= 2:
             return "git clean -x/-X/-d/-ff deletes untracked state"
         return None
+    alias = subprocess.run(
+        ["git", "-C", str(cwd), "config", "--get", f"alias.{sub}"],
+        capture_output=True, text=True, encoding="utf-8", check=False,
+    )
+    if alias.returncode == 0:
+        return f"git alias {sub}: cannot tell what it runs"
+    return None
+
+
+def _check_force_create(sub: str, args: list[str], ctx: Context) -> str | None:
+    """checkout -B / switch -C move a branch like branch -f does."""
+    short = "-B" if sub == "checkout" else "-C"
+    for idx, a in enumerate(args):
+        if a == "--":
+            break
+        if a.startswith(short):
+            target = a[2:] or (args[idx + 1] if idx + 1 < len(args) else "")
+        elif _starts(a.split("=", 1)[0], "--force-create", 9):
+            target = a.partition("=")[2] or (args[idx + 1] if idx + 1 < len(args) else "")
+        else:
+            continue
+        if ctx.feature is None or target.removeprefix("refs/heads/") == ctx.feature:
+            return f"git {sub} {short} must not move the feature branch"
     return None
 
 
@@ -536,12 +652,34 @@ def _check_reset(tree: Path, ctx: Context) -> str | None:
     return None
 
 
-def check_gh(args: list[str]) -> str | None:
-    lowered = [a.lower() for a in args]
-    if lowered[:2] == ["pr", "merge"]:
+def check_gh(args: list[str], unread: frozenset[str] = frozenset()) -> str | None:
+    lowered: list[str] = []
+    skip = False
+    for a in args:
+        if skip:
+            skip = False
+        elif a in ("-R", "--repo", "--hostname"):
+            skip = True  # gh's value flags may stand anywhere
+        elif not a.startswith(("--repo=", "--hostname=")):
+            lowered.append(a.lower())
+    positional = [a for a in lowered if not a.startswith("-")]
+    if any(a in unread for a in args if not a.startswith("-")):
+        return "cannot tell which command this runs"
+    if positional[:2] == ["pr", "merge"]:
         return "gh pr merge is the human's"
-    if lowered[:1] == ["api"] and any("/merge" in a for a in lowered[1:]):
-        return "gh api …/merge is the human's"
+    if positional[:2] == ["alias", "set"] or positional[:2] == ["alias", "import"]:
+        return "gh alias defines a command the check cannot see"
+    if positional[:1] == ["api"]:
+        if any("/merge" in a for a in positional[1:]):
+            return "gh api …/merge is the human's"
+        for idx, a in enumerate(args):
+            if re.match(r"^(?:--field|--raw-field|--input)(?:=|$)|^-[a-zA-Z]*[fF]", a):
+                return "gh api with fields writes"
+            method = a[2:] if re.match(r"^-X.", a) else a.partition("=")[2] if a.startswith("--method=") else ""
+            if a in ("-X", "--method"):
+                method = args[idx + 1] if idx + 1 < len(args) else ""
+            if method and method.upper() != "GET":
+                return f"gh api -X {method} writes"
     return None
 
 
@@ -595,7 +733,7 @@ def check_delete(targets: list[str], ctx: Context, cwd: Path) -> str | None:
     run_dir = Path(os.path.realpath(ctx.run.dir))
     worktrees = [w for w in ctx.worktrees(ctx.run.repo) if within(w, run_dir / "worktrees")]
     for t in targets:
-        path = resolve(t, cwd, ctx.run)
+        path = resolve(t, cwd, ctx.run, ctx.assigned)
         if path is None:
             return f"recursive delete of a path that cannot be resolved: {t}"
         if not within(path, run_dir):
@@ -606,9 +744,31 @@ def check_delete(targets: list[str], ctx: Context, cwd: Path) -> str | None:
     return None
 
 
+def _opaque_launcher(exe: str, args: list[str], dialect: str) -> str | None:
+    """Commands that run code the check never sees: eval, sourced files, stdin into a shell."""
+    if exe in ("eval", "source", "invoke-command", "icm", "start-job", "sajb", "iex", "invoke-expression"):
+        return f"{exe} runs code the check cannot see"
+    if exe == "." and dialect == BASH and args:
+        return ". runs a file the check cannot see"
+    if exe in ("bash", "sh", "zsh", "dash", "ksh"):
+        if "s" in _shorts(args) or not [a for a in args if not a.startswith("-")]:
+            return f"{exe} reads its commands from stdin"
+    if exe in ("pwsh", "powershell"):
+        for idx, a in enumerate(args):
+            if _starts(a, "-file", 2) and idx + 1 < len(args) and args[idx + 1] != "-":
+                return None
+        if not any(a.lower().endswith(".ps1") for a in args[:1]):
+            return f"{exe} reads its commands from stdin"
+    return None
+
+
 def check_command(command: str, dialect: str, ctx: Context, depth: int = 0) -> str | None:
     if depth > 8:
         return "command nests launchers too deeply to check"
+    if re.search(r"\[scriptblock\]::create", command, re.IGNORECASE):
+        return "cannot tell which command this runs"
+    assigned = {m.upper() for m in re.findall(r"(?:^|[\s;&|(){}])(?:\$(?:env:)?)?([A-Za-z_]\w*)\s*=(?!=)", command, re.IGNORECASE)}
+    ctx = replace(ctx, assigned=ctx.assigned | assigned)
     for m in _DIRECTORY_DELETE.finditer(command):
         reason = check_delete([m.group("path").strip("'\"")], ctx, ctx.cwd)
         if reason:
@@ -621,25 +781,33 @@ def check_command(command: str, dialect: str, ctx: Context, depth: int = 0) -> s
     cwd = ctx.cwd
     previous: tuple[str, list[str], Path] | None = None
     for seg in parsed.segments:
+        if dialect == PWSH and seg.words[0] in ("&", ".") and (len(seg.words) == 1 or unknown(seg.words[1], seg.opaque[1])):
+            return "cannot tell which command this runs"  # & $x, & (Get-Command …)
         words, nested = unwrap(seg.words, dialect)
         for sub_dialect, sub in nested:
-            reason = check_command(sub, sub_dialect, Context(ctx.run, cwd, ctx.feature), depth + 1)
+            reason = check_command(sub, sub_dialect, replace(ctx, cwd=cwd), depth + 1)
             if reason:
                 return reason
         if not words:
             previous = None
             continue
+        flags = seg.opaque[len(seg.opaque) - len(words) :]
+        unread = frozenset(w for w, f in zip(words, flags, strict=True) if unknown(w, f))
         exe, args = exe_name(words[0]), words[1:]
+        if dialect == BASH and words[0] in unread and words[0] not in ("[", "[["):
+            return "cannot tell which command this runs"
+        reason = _opaque_launcher(exe, args, dialect)
+        if reason:
+            return reason
         if exe in ("cd", "set-location", "sl", "chdir", "pushd", "push-location"):
-            target = resolve(_positionals(args)[0], cwd, ctx.run) if _positionals(args) else Path.home()
+            target = resolve(_positionals(args)[0], cwd, ctx.run, ctx.assigned) if _positionals(args) else Path.home()
             if target is None:
                 return f"cannot follow cd {args}"
             cwd = target
-        reason = None
         if exe == "git":
-            reason = check_git(args, ctx, cwd)
+            reason = check_git(args, ctx, cwd, unread)
         elif exe == "gh":
-            reason = check_gh(args)
+            reason = check_gh(args, unread)
         else:
             targets = recursive_delete_targets(exe, args, dialect)
             target_cwd = cwd

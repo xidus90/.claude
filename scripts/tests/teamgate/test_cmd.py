@@ -149,6 +149,69 @@ DENY_BASH = [
     "git branch -d {team}/T1 ../main",
     'git worktree remove "$TEAM_RUN_DIR/worktrees/../../x"',
     'rm -rf "$TEAM_RUN_DIR/worktrees/T1/../T1"',
+    # R1: words the check cannot resolve
+    "$TEAMGATE_SURELY_UNSET push",
+    "$'git' push",
+    "/c/Program\\ Files/Git/cmd/gi? push",
+    "g`echo i`t push",
+    "git $TEAMGATE_SURELY_UNSET",
+    'git "${args[@]}"',
+    "git p*sh",
+    "git branch -f fe* HEAD",
+    "git -c $TEAMGATE_SURELY_UNSET commit -m x",
+    "gh $TEAMGATE_SURELY_UNSET merge 5",
+    # R2: launchers
+    "timeout 5 git push",
+    "timeout -s KILL 5 git push",
+    "xargs -I X git push",
+    "stdbuf -oL git push",
+    "sudo -u x git push",
+    "watch -n 1 'git push'",
+    "eval 'git push'",
+    "source x.sh",
+    ". x.sh",
+    "find src -exec rm -rf {} \\;",
+    "find . -execdir git push \\;",
+    # R3: commands from stdin
+    "echo 'git push' | bash",
+    "cat x | sh -s",
+    "bash < x.sh",
+    "echo x | pwsh -Command -",
+    "echo x | pwsh -",
+    "pwsh -cwa 'git push'",
+    "pwsh -CommandWithArgs 'git push'",
+    # R4: git
+    "git send-pack origin x",
+    "git http-push x",
+    "git checkout -B feat/x",
+    "git switch -C feat/x",
+    "git switch --force-create=feat/x",
+    "git -c alias.p=push p",
+    "git --config-env alias.p=X p",
+    "GIT_DIR=x git status",
+    "env GIT_CONFIG_COUNT=1 git commit -m x",
+    "export GIT_CONFIG_PARAMETERS=x; git commit -m x",
+    "git merge --no-verify x",
+    "git merge --no-ver x",
+    "git am --no-verify x",
+    # R5: variables assigned in the same command
+    'TEAM_RUN_DIR=/c; rm -rf "$TEAM_RUN_DIR/evidence"',
+    'export TEAM_RUN_DIR={repo}; git -C "$TEAM_RUN_DIR/worktrees/T1" reset --hard',
+    # R6: gh
+    "gh -R o/r pr merge 5",
+    "gh pr --repo o/r merge 5",
+    "gh --repo=o/r pr merge 5",
+    "gh --hostname h pr merge 5",
+    "gh api -X POST repos/o/r/issues",
+    "gh api --method=DELETE repos/o/r/git/refs/heads/x",
+    "gh api -XPATCH repos/o/r",
+    "gh api repos/o/r/issues -f title=x",
+    "gh api repos/o/r/issues -Ftitle=x",
+    "gh api repos/o/r/issues --raw-field title=x",
+    "gh api repos/o/r/issues --input body.json",
+    "gh alias set m 'pr merge'",
+    "gh alias import x.yml",
+    "rm -r $(pwd)/x",
 ]
 
 ALLOW_BASH = [
@@ -204,6 +267,29 @@ ALLOW_BASH = [
     "echo $(git status)",
     "bash -c 'git status'",
     "cd && ls",
+    # neighbours of the fix-round rules
+    "[ -f x ] && echo y",
+    "$HOME/bin/tool status",
+    "git commit -m '$x *'",
+    "timeout 5 git status",
+    "xargs -n 1 echo",
+    "nice -n 5 git status",
+    "find . -exec cat {} \\;",
+    "watch -n 1 'git status'",
+    "echo x | bash script.sh",
+    "git checkout -B other",
+    "git switch -C other",
+    "git merge x",
+    "git log",
+    'X=1; rm -rf "$TEAM_RUN_DIR/evidence"',
+    "gh api repos/o/r/pulls",
+    "gh api -X GET repos/o/r/pulls",
+    "gh api --method get repos/o/r/pulls",
+    "gh pr view 5 -R o/r",
+    "gh alias list",
+    "rm -rf ${TEAM_RUN_DIR}/evidence",
+    "git checkout -- -Bfeat/x",
+    "pwsh -CommandWithArgs 'git status'",
 ]
 
 
@@ -260,6 +346,21 @@ DENY_PWSH = [
     "Start-Process -NoNewWindow -FilePath git -ArgumentList push",
     "Start-Process git push",
     'Remove-Item -Recurse "$env:TEAM_RUN_DIR/../.."',
+    # fix round
+    "& $git push",
+    "& (Get-Command git) push",
+    ". (Get-Command git) push",
+    "git @a",
+    "git $sub",
+    "Invoke-Command -ScriptBlock $sb",
+    "Start-Job -FilePath x.ps1",
+    "[scriptblock]::Create('git push').Invoke()",
+    "'git push' | iex",
+    "'git push' | Invoke-Expression",
+    "pwsh -cwa 'git push'",
+    "pwsh -File -",
+    "$env:GIT_CONFIG_GLOBAL = 'x'; git commit -m y",
+    "$env:TEAM_RUN_DIR = 'C:/'; Remove-Item -Recurse \"$env:TEAM_RUN_DIR/evidence\"",
 ]
 
 ALLOW_PWSH = [
@@ -278,6 +379,13 @@ ALLOW_PWSH = [
     "Start-Process",
     '[IO.Directory]::Delete("$env:TEAM_RUN_DIR/evidence", $true)',
     "Get-ChildItem *.tmp | Remove-Item",
+    # fix round
+    "$x = 1",
+    "if ($LASTEXITCODE) { exit 1 }",
+    "& 'C:/Program Files/Git/cmd/git.exe' status",
+    "pwsh -File build.ps1 -x",
+    "pwsh build.ps1",
+    "git commit -m \"user@host\"",
 ]
 
 
@@ -309,6 +417,22 @@ def test_without_a_known_feature_branch_force_and_reset_fail_closed(world: World
     ctx = tc.Context(world.run, world.repo, None)
     assert tc.check_command("git branch -f other HEAD", tc.BASH, ctx) is not None
     assert tc.check_command("git reset --hard", tc.BASH, tc.Context(world.run, wt, None)) is not None
+    assert tc.check_command("git checkout -B other", tc.BASH, ctx) is not None
+
+
+def test_a_git_alias_is_refused(world: World) -> None:
+    sh(world.repo, "config", "alias.pp", "push")
+    assert check(world, "git pp", tc.BASH) == "git alias pp: cannot tell what it runs"
+    assert check(world, "git status", tc.BASH) is None
+
+
+def test_reset_hard_with_another_git_dir_fails_closed(world: World, wt: Path) -> None:
+    assert check(world, "git --work-tree=. reset --hard", tc.BASH, cwd=wt) is not None
+    assert check(world, "git --git-dir .git reset --hard", tc.BASH, cwd=wt) is not None
+
+
+def test_cd_into_the_repo_is_followed(world: World, wt: Path) -> None:
+    assert check(world, fill('cd "{repo}" && git reset --hard', world, wt), tc.BASH, cwd=wt) is not None
 
 
 @pytest.mark.parametrize("line", ["echo 'open", 'echo "open', "echo `open", "echo $(open", '"$(open"', 'echo "`open"'])
