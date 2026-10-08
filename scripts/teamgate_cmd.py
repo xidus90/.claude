@@ -771,9 +771,6 @@ def check_delete(targets: list[str], ctx: Context, cwd: Path) -> str | None:
 _NAMED_ASSIGNMENT = (
     r"\b(?:for|select)\s+([A-Za-z_]\w*)\s+in\b"
     r"|\bprintf\b[^;|&\n]*?\s-v\s*([A-Za-z_]\w*)"
-    r"|(?:^|[;&|\n(){}])\s*(?:set-item|new-item|si|ni)\s[^;|\n]*?\benv:([A-Za-z_]\w*)"
-    r"|(?:^|[;&|\n(){}])\s*(?:set-variable|sv)\s+(?:-name\s+)?['\"]?([A-Za-z_]\w*)"
-    r"|SetEnvironmentVariable\(\s*['\"]([A-Za-z_]\w*)"
     r"|\$\{env:([A-Za-z_]\w*)\}\s*="
 )
 _XARGS_REFUSED = {"git", "gh", "rm", "rd", "rmdir"} | _REMOVE_PS
@@ -818,37 +815,44 @@ def _opaque_launcher(exe: str, args: list[str], dialect: str) -> str | None:
 
 
 _UNPARSED_SETTERS = {"read", "declare", "typeset", "local", "readonly", "mapfile", "readarray", "getopts"}
-_PS_SETTERS = {"set-variable", "sv", "set-item", "si", "new-item", "ni"}
+# Cmdlets that can write a variable or env: whatever their arguments; their names are not parsed.
+_PS_SETTERS = {"set-variable", "sv", "set-item", "si", "new-item", "ni", "set-content", "sc", "add-content", "ac", "clear-item", "cli"}
 _GUARDED = {"git", "gh", "rm", "rd", "rmdir", "find"} | _REMOVE_PS
 
 
-def _guarded_nested(nested: list[tuple[str, str]], depth: int) -> bool:
-    """git/gh/a delete inside nested command text ($(…), bash -c, launchers)."""
+def _nested_scan(nested: list[tuple[str, str]], dialect: str, depth: int) -> tuple[bool, bool]:
+    """(unparsed, guarded) of nested command text ($(…), bash -c, launchers).
+
+    git/gh/a delete counts from any nesting. A setter counts only from PowerShell inside
+    PowerShell, which runs in the caller's scope; a Bash subshell cannot reach its parent.
+    """
     if depth > 8:
-        return True  # too deep to tell: fail closed
-    return any(_assignment_scan(tokenize(text, d), d, depth + 1)[1] for d, text in nested)
+        return True, True  # too deep to tell: fail closed
+    unparsed = guarded = False
+    for d, text in nested:
+        inner_unparsed, inner_guarded = _assignment_scan(tokenize(text, d), d, depth + 1)
+        unparsed = unparsed or (inner_unparsed and dialect == PWSH and d == PWSH)
+        guarded = guarded or inner_guarded
+    return unparsed, guarded
 
 
 def _assignment_scan(parsed: Parsed, dialect: str, depth: int = 0) -> tuple[bool, bool]:
     """Over the parsed segments, in any order: (a form sets names the check cannot read, git/gh/a delete runs)."""
-    unparsed = False
-    guarded = _guarded_nested(parsed.nested, depth)
-    for idx, seg in enumerate(parsed.segments):
+    unparsed, guarded = _nested_scan(parsed.nested, dialect, depth)
+    for seg in parsed.segments:
         words, nested = unwrap(seg.words, dialect)
-        guarded = guarded or _guarded_nested(nested, depth)
+        inner_unparsed, inner_guarded = _nested_scan(nested, dialect, depth)
+        unparsed, guarded = unparsed or inner_unparsed, guarded or inner_guarded
         if not words:
             continue
-        flags = seg.opaque[len(seg.opaque) - len(words) :]
         exe, args = exe_name(words[0]), words[1:]
         guarded = guarded or exe in _GUARDED
         if exe in _UNPARSED_SETTERS or (exe == "printf" and "-v" in args):
             unparsed = True
-        if dialect == PWSH and exe in _PS_SETTERS:
-            names = [(w, f) for w, f in zip(args, flags[1:], strict=True) if not w.startswith("-")]
-            unparsed = unparsed or not names or unknown(*names[0])
-        following = parsed.segments[idx + 1 : idx + 2]
-        if exe.endswith("::setenvironmentvariable") and following:
-            unparsed = unparsed or unknown(following[0].words[0], following[0].opaque[0])
+        if dialect == PWSH and (exe in _PS_SETTERS or exe.endswith("::setenvironmentvariable")):
+            unparsed = True
+        if dialect == PWSH and exe in _REMOVE_PS and any(a.lower().startswith("env:") for a in args):
+            unparsed = True
     return unparsed, guarded
 
 
