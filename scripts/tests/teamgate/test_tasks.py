@@ -814,3 +814,71 @@ def test_status_shows_review_states_and_green(world: World) -> None:
     tg.supersede(world.run, ["1:rc", "1:fx"])
     reviewed(world, "T1", head)
     assert "| T1 | green | 2 | verify:review pass |" in (world.run.dir / "status.md").read_text(encoding="utf-8")
+
+
+# --- fix round 1: renamed tasks, gate run at the merged head, lock release ---
+
+
+def test_a_renamed_merge_task_is_refused(world: World) -> None:
+    world.worktree("T1")
+    world.created("i1", "[impl:backend] T1 Build")
+    world.commit(world.run.worktree("T1"))
+    world.completed("i1", "[impl:backend] T1 Build")
+    world.created("m", "[merge] T1")
+    sh(world.repo, "merge", "-q", "--ff-only", world.run.branch("T1"))
+    assert world.completed("m", "[impl:backend] T1 renamed") == [
+        "task subject changed since creation: '[merge] T1' -> '[impl:backend] T1 renamed'"
+    ]
+    assert {"event": "completed", "gen": 1, "task_id": "m"} not in world.register()
+
+
+def test_a_renamed_verify_review_is_refused(world: World) -> None:
+    build(world)
+    world.created("vr", "[verify:review] T1")
+    assert "task subject changed since creation" in world.completed("vr", "[impl:backend] T1 x")[0]
+
+
+def test_a_renamed_impl_is_refused(world: World) -> None:
+    wt = world.worktree("T1")
+    world.created("i1", "[impl:backend] T1 Build")
+    head = world.commit(wt)
+    review(world, "i1", "[review:code] T1", head)
+    assert "task subject changed since creation" in world.completed("i1", "[review:code] T1")[0]
+
+
+def test_merge_needs_a_gate_run_at_the_merged_head(world: World) -> None:
+    wt, _ = build(world)
+    head2 = world.commit(wt, "late.txt")
+    reviewed(world, "T1", head2)
+    world.created("m", "[merge] T1")
+    sh(world.repo, "merge", "-q", "--ff-only", world.run.branch("T1"))
+    assert world.completed("m", "[merge] T1") == [f"root T1 has no passing gate run for {head2}"]
+
+
+def test_merge_refuses_a_failing_gate_run_at_the_merged_head(world: World) -> None:
+    wt = world.worktree("T1")
+    world.created("i1", "[impl:backend] T1 Build")
+    head = world.commit(wt)
+    world.completed("i1", "[impl:backend] T1 Build")
+    world.created("vi1", "[verify:impl] T1")
+    world.gate_log("T1", head, 0)
+    verify(world, "vi1", "[verify:impl] T1", head, "fail", [settled(world, "T1-ver-F1", "defect", "confirmed")])
+    assert world.completed("vi1", "[verify:impl] T1") == []
+    reviewed(world, "T1", head)
+    world.created("m", "[merge] T1")
+    sh(world.repo, "merge", "-q", "--ff-only", world.run.branch("T1"))
+    assert world.completed("m", "[merge] T1") == [f"root T1 has no passing gate run for {head}"]
+
+
+def test_a_lock_broken_by_another_hook_releases_quietly(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    lock = world.run.dir / "register.lock"
+    real_close = os.close
+
+    def close_then_broken(fd: int) -> None:
+        real_close(fd)
+        lock.unlink()  # another hook judged it stale and broke it (Windows forbids this while it is open)
+
+    monkeypatch.setattr(os, "close", close_then_broken)
+    with tg.locked(world.run, wait_s=1):
+        pass
+    assert not lock.exists()

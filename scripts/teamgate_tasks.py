@@ -163,7 +163,8 @@ def locked(run: Run, wait_s: float = 10.0) -> Iterator[None]:
         yield
     finally:
         os.close(fd)
-        os.unlink(lock)
+        with suppress(FileNotFoundError):  # another hook broke it as stale
+            os.unlink(lock)
 
 
 def read_register(run: Run) -> list[JsonObj]:
@@ -500,7 +501,10 @@ def on_completed(run: Run, payload: Payload, wait_marker: bool = False) -> list[
         task = by_key.get((gen, task_id))
         if task is None:
             return [f"task {task_id} of generation {gen} is not in the register"]
-        errors = _completion_errors(run, title, task, payload, by_key, done)
+        if task.subject != subject:
+            # A teammate may rename a task; the gate follows what was registered at creation.
+            return [f"task subject changed since creation: {task.subject!r} -> {subject!r}"]
+        errors = _completion_errors(run, task.title, task, payload, by_key, done)
         if errors:
             return errors
         event: JsonObj = {"event": "completed", "gen": gen, "task_id": task_id}
@@ -544,6 +548,9 @@ def check_merge(run: Run, root: str, done: list[Task]) -> list[str]:
     head = git(run.repo, "rev-parse", branch).stdout.strip()
     if not is_green(run, done, root, head):
         return [f"root {root} is not green for {head}"]
+    gates = judged(run, done, root, {"verify"}, {"impl", "fix", "rebase"})
+    if not gates or gates[-1].verdict.get("verdict") != "pass" or gates[-1].verdict.get("head") != head:
+        return [f"root {root} has no passing gate run for {head}"]
     return []
 
 
