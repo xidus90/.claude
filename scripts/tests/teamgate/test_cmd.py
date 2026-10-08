@@ -212,6 +212,22 @@ DENY_BASH = [
     "gh alias set m 'pr merge'",
     "gh alias import x.yml",
     "rm -r $(pwd)/x",
+    # fix round 2
+    "git {push,status}",
+    "{git,x} push",
+    "git p{u..u}sh",
+    "echo a | xargs git status",
+    'echo a | xargs -n 1 rm -r "$TEAM_RUN_DIR/evidence"',
+    'pwsh -c "$x"',
+    "for TEAM_RUN_DIR in /c; do rm -rf \"$TEAM_RUN_DIR/evidence\"; done",
+    'read -r TEAM_RUN_DIR < f; rm -rf "$TEAM_RUN_DIR/evidence"',
+    'local TEAM_RUN_DIR; rm -rf "$TEAM_RUN_DIR/evidence"',
+    "for GIT_DIR in x; do git status; done",
+    "git checkout -fB feat/x",
+    "git switch -fC feat/x",
+    "git pull --no-verify",
+    "git pull --no-ver",
+    "git commit $x",
 ]
 
 ALLOW_BASH = [
@@ -289,6 +305,17 @@ ALLOW_BASH = [
     "gh alias list",
     "rm -rf ${TEAM_RUN_DIR}/evidence",
     "git checkout -- -Bfeat/x",
+    "{ git status; }",
+    "find . -exec echo {} \\;",
+    "echo ${HOME}",
+    "git rev-parse HEAD^{tree}",
+    "git log @{u}..HEAD",
+    "echo a | xargs -n 1 echo",
+    "pwsh -c 'git status'",
+    'git commit -m "fix $x"',
+    "git checkout -fb other",
+    "git pull",
+    "for f in a b; do echo $f; done",
     "pwsh -CommandWithArgs 'git status'",
 ]
 
@@ -359,6 +386,14 @@ DENY_PWSH = [
     "'git push' | Invoke-Expression",
     "pwsh -cwa 'git push'",
     "pwsh -File -",
+    # fix round 2
+    "iex $cmd",
+    "Invoke-Expression $(Get-Content x)",
+    "pwsh -Command $cmd",
+    "Set-Item env:TEAM_RUN_DIR C:/; Remove-Item -Recurse \"$env:TEAM_RUN_DIR/evidence\"",
+    "Set-Variable -Name GIT_DIR -Value x; git status",
+    "[Environment]::SetEnvironmentVariable('GIT_DIR', 'x'); git status",
+    "[Environment]::SetEnvironmentVariable($n, 'x'); Remove-Item -Recurse \"$env:TEAM_RUN_DIR/evidence\"",
     "$env:GIT_CONFIG_GLOBAL = 'x'; git commit -m y",
     "$env:TEAM_RUN_DIR = 'C:/'; Remove-Item -Recurse \"$env:TEAM_RUN_DIR/evidence\"",
 ]
@@ -386,6 +421,9 @@ ALLOW_PWSH = [
     "pwsh -File build.ps1 -x",
     "pwsh build.ps1",
     "git commit -m \"user@host\"",
+    "pwsh -cwa 'git status'",
+    "git log @{u}..HEAD",
+    "Set-Item env:FOO x; git status",
 ]
 
 
@@ -429,6 +467,11 @@ def test_a_git_alias_is_refused(world: World) -> None:
 def test_reset_hard_with_another_git_dir_fails_closed(world: World, wt: Path) -> None:
     assert check(world, "git --work-tree=. reset --hard", tc.BASH, cwd=wt) is not None
     assert check(world, "git --git-dir .git reset --hard", tc.BASH, cwd=wt) is not None
+
+
+def test_a_hanging_alias_lookup_is_refused(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tc, "ALIAS_TIMEOUT", 1e-9)
+    assert check(world, "git status", tc.BASH) == "git alias lookup timed out"
 
 
 def test_cd_into_the_repo_is_followed(world: World, wt: Path) -> None:

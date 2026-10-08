@@ -64,6 +64,7 @@ def tokenize(text: str, dialect: str) -> Parsed:
     words: list[str] = []
     flags: list[bool] = []
     word: list[str] = []
+    bare: list[str] = []  # the unquoted characters of the word
     in_word = False
     opaque = False
     piped = False
@@ -72,9 +73,13 @@ def tokenize(text: str, dialect: str) -> Parsed:
     def end_word() -> None:
         nonlocal in_word, opaque
         if in_word:
+            # Bash brace expansion: {a,b} and {a..b} make several words.
+            if dialect == BASH and re.search(r"\{[^{}]*(?:,|\.\.)[^{}]*\}", "".join(bare)):
+                opaque = True
             words.append("".join(word))
             flags.append(opaque)
             word.clear()
+            bare.clear()
             in_word = opaque = False
 
     def end_segment(next_piped: bool) -> None:
@@ -187,9 +192,11 @@ def tokenize(text: str, dialect: str) -> Parsed:
                 end_segment(False)
                 i += 1
         else:
-            if c == "$" or (dialect == BASH and c in "*?[") or (dialect == PWSH and c == "@" and not in_word):
+            splat = dialect == PWSH and c == "@" and not in_word and re.match(r"[A-Za-z_]", text[i + 1 : i + 2])
+            if c == "$" or (dialect == BASH and c in "*?[") or splat:
                 opaque = True
             word.append(c)
+            bare.append(c)
             in_word = True
             i += 1
     end_segment(False)
@@ -231,7 +238,7 @@ _KNOWN_VAR = re.compile(r"\$\{?(?:env:)?(?:TEAM_RUN_DIR|HOME|USERPROFILE)(?![A-Z
 
 def unknown(word: str, opaque: bool) -> bool:
     """The shell turns the word into something the check cannot read (spec 6: refuse)."""
-    return opaque and (bool(re.search(r"[`*?\[@]", word)) or "$" in _KNOWN_VAR.sub("", word))
+    return opaque and (bool(re.search(r"[`*?\[@]|\{[^{}]*(?:,|\.\.)", word)) or "$" in _KNOWN_VAR.sub("", word))
 
 
 def exe_name(word: str) -> str:
@@ -255,7 +262,7 @@ def unwrap(words: list[str], dialect: str) -> tuple[list[str], list[tuple[str, s
         exe = exe_name(first)
         if dialect == PWSH and first in ("&", "."):
             words = words[1:]
-        elif dialect == BASH and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", first):
+        elif dialect == BASH and (re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", first) or first in _BASH_KEYWORDS):
             words = words[1:]
         elif exe in _LAUNCHERS:
             rest = words[1:]
@@ -339,6 +346,8 @@ def unwrap(words: list[str], dialect: str) -> tuple[list[str], list[tuple[str, s
     return words, nested
 
 
+_BASH_KEYWORDS = {"do", "then", "else", "elif", "if", "while", "until", "!"}  # the command follows
+
 _LAUNCHERS: dict[str, frozenset[str]] = {
     # launcher -> its options that take the next word as value
     "env": frozenset({"-u", "--unset", "-C", "--chdir"}),
@@ -374,7 +383,7 @@ def resolve(word: str, cwd: Path, run: Run, assigned: frozenset[str] = frozenset
 
     def var(m: re.Match[str]) -> str:
         name = m.group(1) or m.group(2)
-        if name.upper() in assigned:
+        if name.upper() in assigned or "*" in assigned:
             raise KeyError(name)
         if name.upper() == "TEAM_RUN_DIR":
             return str(run.dir)
@@ -503,9 +512,13 @@ def _positionals(args: list[str], value_shorts: str = "", value_longs: set[str] 
 _GIT_ENV = re.compile(r"^GIT_(?:CONFIG(?:_COUNT|_KEY_\w*|_VALUE_\w*|_PARAMETERS|_GLOBAL|_SYSTEM)?|DIR|WORK_TREE)$")
 
 
+_NO_VERIFY_SUBS = ("commit", "merge", "am", "pull")
+ALIAS_TIMEOUT = 5.0  # seconds; the hook itself has 30
+
+
 def check_git(args: list[str], ctx: Context, cwd: Path, unread: frozenset[str] = frozenset()) -> str | None:
     """`unread` holds the words the shell expands into something the check cannot read."""
-    if any(_GIT_ENV.match(name) for name in ctx.assigned):
+    if any(_GIT_ENV.match(name) or name == "*" for name in ctx.assigned):
         return "git with GIT_CONFIG_*/GIT_DIR/GIT_WORK_TREE set by the command"
     other_tree = False
     i = 0
@@ -531,7 +544,11 @@ def check_git(args: list[str], ctx: Context, cwd: Path, unread: frozenset[str] =
     if i >= len(args):
         return None
     sub, rest = args[i].lower(), args[i + 1 :]
-    if args[i] in unread or any(p in unread for p in _positionals(rest)):
+    if sub in _NO_VERIFY_SUBS:  # message words do not decide the command
+        positional = _positionals(rest, "mFcCt", set(_COMMIT_VALUE_LONGS))
+    else:
+        positional = _positionals(rest)
+    if args[i] in unread or any(p in unread for p in positional):
         return "cannot tell which command this runs"
 
     if sub in ("push", "send-pack", "http-push"):
@@ -542,7 +559,7 @@ def check_git(args: list[str], ctx: Context, cwd: Path, unread: frozenset[str] =
         return "git config core.hooksPath bypasses the hooks"
     if sub in ("checkout", "switch"):
         return _check_force_create(sub, rest, ctx)
-    if sub in ("commit", "merge", "am"):
+    if sub in _NO_VERIFY_SUBS:
         if sub == "commit" and "n" in _shorts(rest, value="mFcCt", stuck="uS", value_longs=_COMMIT_VALUE_LONGS):
             return "git commit -n skips the commit gate"
         skip = False
@@ -581,10 +598,13 @@ def check_git(args: list[str], ctx: Context, cwd: Path, unread: frozenset[str] =
         if set(letters) & {"x", "X", "d"} or forces >= 2:
             return "git clean -x/-X/-d/-ff deletes untracked state"
         return None
-    alias = subprocess.run(
-        ["git", "-C", str(cwd), "config", "--get", f"alias.{sub}"],
-        capture_output=True, text=True, encoding="utf-8", check=False,
-    )
+    try:
+        alias = subprocess.run(
+            ["git", "-C", str(cwd), "config", "--get", f"alias.{sub}"],
+            capture_output=True, text=True, encoding="utf-8", check=False, timeout=ALIAS_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        return "git alias lookup timed out"
     if alias.returncode == 0:
         return f"git alias {sub}: cannot tell what it runs"
     return None
@@ -596,8 +616,9 @@ def _check_force_create(sub: str, args: list[str], ctx: Context) -> str | None:
     for idx, a in enumerate(args):
         if a == "--":
             break
-        if a.startswith(short):
-            target = a[2:] or (args[idx + 1] if idx + 1 < len(args) else "")
+        bundled = re.match(rf"^-[A-Za-z]*?{short[1]}(.*)$", a)  # -B, -fB, -Bname
+        if bundled:
+            target = bundled.group(1) or (args[idx + 1] if idx + 1 < len(args) else "")
         elif _starts(a.split("=", 1)[0], "--force-create", 9):
             target = a.partition("=")[2] or (args[idx + 1] if idx + 1 < len(args) else "")
         else:
@@ -660,8 +681,8 @@ def check_gh(args: list[str], unread: frozenset[str] = frozenset()) -> str | Non
             skip = False
         elif a in ("-R", "--repo", "--hostname"):
             skip = True  # gh's value flags may stand anywhere
-        elif not a.startswith(("--repo=", "--hostname=")):
-            lowered.append(a.lower())
+        else:
+            lowered.append(a.lower())  # --repo=X is a dash word and never a positional
     positional = [a for a in lowered if not a.startswith("-")]
     if any(a in unread for a in args if not a.startswith("-")):
         return "cannot tell which command this runs"
@@ -744,6 +765,35 @@ def check_delete(targets: list[str], ctx: Context, cwd: Path) -> str | None:
     return None
 
 
+_NAMED_ASSIGNMENT = (
+    r"\bfor\s+([A-Za-z_]\w*)\s+in\b"
+    r"|(?:^|[;&|\n(){}])\s*(?:set-item|new-item|si|ni)\s[^;|\n]*?\benv:([A-Za-z_]\w*)"
+    r"|(?:^|[;&|\n(){}])\s*(?:set-variable|sv)\s+(?:-name\s+)?['\"]?([A-Za-z_]\w*)"
+    r"|SetEnvironmentVariable\(\s*['\"]([A-Za-z_]\w*)"
+)
+_XARGS_REFUSED = {"git", "gh", "rm", "rd", "rmdir"} | _REMOVE_PS
+
+
+def _opaque_text(words: list[str], flags: list[bool]) -> str | None:
+    """xargs into git/gh/a delete, and iex or pwsh -Command with text the check cannot read."""
+    for idx, w in enumerate(words):
+        exe, rest, rest_flags = exe_name(w), words[idx + 1 :], flags[idx + 1 :]
+        if exe == "xargs":
+            k = 0
+            while k < len(rest) and rest[k].startswith("-"):
+                k += 2 if rest[k] in _LAUNCHERS["xargs"] else 1
+            if k < len(rest) and exe_name(rest[k]) in _XARGS_REFUSED:
+                return f"xargs {rest[k]}: arguments come from stdin"
+        if exe in ("iex", "invoke-expression") and any(unknown(a, f) for a, f in zip(rest, rest_flags, strict=True)):
+            return "cannot tell which command this runs"
+        if exe in ("pwsh", "powershell"):
+            for k, a in enumerate(rest[:-1]):
+                lw = a.lower()
+                if (lw in ("-c", "-cwa") or _starts(lw, "-command", 3) or _starts(lw, "-commandwithargs", 9)) and unknown(rest[k + 1], rest_flags[k + 1]):
+                    return "cannot tell which command this runs"
+    return None
+
+
 def _opaque_launcher(exe: str, args: list[str], dialect: str) -> str | None:
     """Commands that run code the check never sees: eval, sourced files, stdin into a shell."""
     if exe in ("eval", "source", "invoke-command", "icm", "start-job", "sajb", "iex", "invoke-expression"):
@@ -768,6 +818,9 @@ def check_command(command: str, dialect: str, ctx: Context, depth: int = 0) -> s
     if re.search(r"\[scriptblock\]::create", command, re.IGNORECASE):
         return "cannot tell which command this runs"
     assigned = {m.upper() for m in re.findall(r"(?:^|[\s;&|(){}])(?:\$(?:env:)?)?([A-Za-z_]\w*)\s*=(?!=)", command, re.IGNORECASE)}
+    assigned |= {next(g for g in m.groups() if g).upper() for m in re.finditer(_NAMED_ASSIGNMENT, command, re.IGNORECASE)}
+    if re.search(r"(?:^|[;&|\n(){}])\s*(?:read|declare|typeset|local|readonly)\b|SetEnvironmentVariable\(\s*[^'\"\s]", command, re.IGNORECASE):
+        assigned.add("*")  # names these forms set are not parsed: every variable is unknown
     ctx = replace(ctx, assigned=ctx.assigned | assigned)
     for m in _DIRECTORY_DELETE.finditer(command):
         reason = check_delete([m.group("path").strip("'\"")], ctx, ctx.cwd)
@@ -783,6 +836,9 @@ def check_command(command: str, dialect: str, ctx: Context, depth: int = 0) -> s
     for seg in parsed.segments:
         if dialect == PWSH and seg.words[0] in ("&", ".") and (len(seg.words) == 1 or unknown(seg.words[1], seg.opaque[1])):
             return "cannot tell which command this runs"  # & $x, & (Get-Command …)
+        reason = _opaque_text(seg.words, seg.opaque)
+        if reason:
+            return reason
         words, nested = unwrap(seg.words, dialect)
         for sub_dialect, sub in nested:
             reason = check_command(sub, sub_dialect, replace(ctx, cwd=cwd), depth + 1)
