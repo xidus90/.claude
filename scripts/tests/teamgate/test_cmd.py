@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 import pytest
 from conftest import FEATURE, RUN_NAME, World, sh
@@ -228,6 +229,16 @@ DENY_BASH = [
     "git pull --no-verify",
     "git pull --no-ver",
     "git commit $x",
+    # fix round 3
+    "while read -r GIT_DIR; do git status; done < f",
+    'if read -r TEAM_RUN_DIR < f; then rm -rf "$TEAM_RUN_DIR/x"; fi',
+    'for x in a; do local TEAM_RUN_DIR; rm -rf "$TEAM_RUN_DIR/evidence"; done',
+    'mapfile TEAM_RUN_DIR < f; rm -rf "$TEAM_RUN_DIR/evidence"',
+    "readarray -t GIT_DIR < f; git status",
+    'printf -v TEAM_RUN_DIR %s /c; rm -rf "$TEAM_RUN_DIR/evidence"',
+    "select GIT_DIR in x; do git status; done",
+    "git pull -t $x",
+    "git merge --squash $x",
 ]
 
 ALLOW_BASH = [
@@ -316,6 +327,8 @@ ALLOW_BASH = [
     "git checkout -fb other",
     "git pull",
     "for f in a b; do echo $f; done",
+    'git log | while read -r l; do echo "$l"; done',
+    'git merge -m "fix $x" topic',
     "pwsh -CommandWithArgs 'git status'",
 ]
 
@@ -470,8 +483,15 @@ def test_reset_hard_with_another_git_dir_fails_closed(world: World, wt: Path) ->
 
 
 def test_a_hanging_alias_lookup_is_refused(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(tc, "ALIAS_TIMEOUT", 1e-9)
+    def hang(*args: object, **kwargs: object) -> NoReturn:
+        raise subprocess.TimeoutExpired("git", tc.ALIAS_TIMEOUT)
+
+    monkeypatch.setattr(subprocess, "run", hang)
     assert check(world, "git status", tc.BASH) == "git alias lookup timed out"
+
+
+def test_unknown_assignments_have_their_own_reason(world: World) -> None:
+    assert check(world, "read -r x < f; git status", tc.BASH) == "cannot tell which variables this command sets"
 
 
 def test_cd_into_the_repo_is_followed(world: World, wt: Path) -> None:

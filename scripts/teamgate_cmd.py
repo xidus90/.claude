@@ -518,7 +518,9 @@ ALIAS_TIMEOUT = 5.0  # seconds; the hook itself has 30
 
 def check_git(args: list[str], ctx: Context, cwd: Path, unread: frozenset[str] = frozenset()) -> str | None:
     """`unread` holds the words the shell expands into something the check cannot read."""
-    if any(_GIT_ENV.match(name) or name == "*" for name in ctx.assigned):
+    if "*" in ctx.assigned:
+        return "cannot tell which variables this command sets"  # one of them may be a GIT_* name
+    if any(_GIT_ENV.match(name) for name in ctx.assigned):
         return "git with GIT_CONFIG_*/GIT_DIR/GIT_WORK_TREE set by the command"
     other_tree = False
     i = 0
@@ -544,11 +546,13 @@ def check_git(args: list[str], ctx: Context, cwd: Path, unread: frozenset[str] =
     if i >= len(args):
         return None
     sub, rest = args[i].lower(), args[i + 1 :]
-    if sub in _NO_VERIFY_SUBS:  # message words do not decide the command
-        positional = _positionals(rest, "mFcCt", set(_COMMIT_VALUE_LONGS))
+    if sub == "commit":  # message words do not decide the command
+        checked = _positionals(rest, "mFcCt", set(_COMMIT_VALUE_LONGS))
+    elif sub in _NO_VERIFY_SUBS:  # every word but a message decides
+        checked = _positionals(rest, "mF", {"--message", "--file"}) + [a for a in rest if a.startswith("-")]
     else:
-        positional = _positionals(rest)
-    if args[i] in unread or any(p in unread for p in positional):
+        checked = _positionals(rest)
+    if args[i] in unread or any(p in unread for p in checked):
         return "cannot tell which command this runs"
 
     if sub in ("push", "send-pack", "http-push"):
@@ -766,7 +770,8 @@ def check_delete(targets: list[str], ctx: Context, cwd: Path) -> str | None:
 
 
 _NAMED_ASSIGNMENT = (
-    r"\bfor\s+([A-Za-z_]\w*)\s+in\b"
+    r"\b(?:for|select)\s+([A-Za-z_]\w*)\s+in\b"
+    r"|\bprintf\b[^;|&\n]*?\s-v\s*([A-Za-z_]\w*)"
     r"|(?:^|[;&|\n(){}])\s*(?:set-item|new-item|si|ni)\s[^;|\n]*?\benv:([A-Za-z_]\w*)"
     r"|(?:^|[;&|\n(){}])\s*(?:set-variable|sv)\s+(?:-name\s+)?['\"]?([A-Za-z_]\w*)"
     r"|SetEnvironmentVariable\(\s*['\"]([A-Za-z_]\w*)"
@@ -819,8 +824,14 @@ def check_command(command: str, dialect: str, ctx: Context, depth: int = 0) -> s
         return "cannot tell which command this runs"
     assigned = {m.upper() for m in re.findall(r"(?:^|[\s;&|(){}])(?:\$(?:env:)?)?([A-Za-z_]\w*)\s*=(?!=)", command, re.IGNORECASE)}
     assigned |= {next(g for g in m.groups() if g).upper() for m in re.finditer(_NAMED_ASSIGNMENT, command, re.IGNORECASE)}
-    if re.search(r"(?:^|[;&|\n(){}])\s*(?:read|declare|typeset|local|readonly)\b|SetEnvironmentVariable\(\s*[^'\"\s]", command, re.IGNORECASE):
-        assigned.add("*")  # names these forms set are not parsed: every variable is unknown
+    unparsed = re.search(
+        r"(?:^|[;&|\n(){}])\s*(?:(?:while|until|if|then|do|else|elif|!)\s+)*(?:read|declare|typeset|local|readonly|mapfile|readarray)\b"
+        r"|SetEnvironmentVariable\(\s*[^'\"\s]",
+        command, re.IGNORECASE,
+    )
+    # Names these forms set are not parsed: every variable is unknown to what runs after them.
+    if unparsed and re.search(r"\b(?:git|gh|rm|rd|rmdir|remove-item|ri|del|erase|find)\b", command[unparsed.end() :], re.IGNORECASE):
+        assigned.add("*")
     ctx = replace(ctx, assigned=ctx.assigned | assigned)
     for m in _DIRECTORY_DELETE.finditer(command):
         reason = check_delete([m.group("path").strip("'\"")], ctx, ctx.cwd)
