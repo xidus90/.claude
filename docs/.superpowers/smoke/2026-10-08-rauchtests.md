@@ -23,19 +23,27 @@ Task 1 des Plans `docs/.superpowers/plans/2026-10-08-agent-team.md`.
 |---|---|---|---|
 | 0 | bestanden | Lead meldet TaskCreate/TaskGet/TaskList/TaskUpdate; `hooks.jsonl` hat `task-created` für `[probe] lead task` (Lead) und `[probe] made by mate` (`agent_id aprobe-mate-…`). `CLAUDE_CODE_ENABLE_TODO_TOOLS=1` im `env` der Settings reicht. | keine |
 | 1 | bestanden | Teammate rief `Skill superpowers:verification-before-completion`, zitierte `# Verification Before Completion` | keine |
-| 2 | bestanden | Live: drei Dateien ohne Rückfrage geschrieben, Rechtemodus `auto` (Transkript, Meta `permissionMode: auto`; Mensch: keine Rückfrage). Wächter: loomux 1.1.0 von `classic-game-bench` lässt Write auf `worktrees/w1/a.txt`, `verdicts/v.json`, `evidence/e.txt`, `.team-runs/.gitignore` für Lead- und Teammate-Nutzlast durch (Exit 0); Gegenprobe `C:/Users/micro/elsewhere.txt` Exit 2 „outside every writable tree“. | keine |
+| 2 | bestanden | Live: drei Dateien ohne Rückfrage geschrieben, Rechtemodus `auto` (Transkript, Meta `permissionMode: auto`; Mensch: keine Rückfrage). Wächter: loomux 1.1.0 von `classic-game-bench` lässt Write auf `worktrees/w1/a.txt`, `verdicts/v.json`, `evidence/e.txt`, `.team-runs/.gitignore` für Lead- und Teammate-Nutzlast durch (Exit 0); Gegenprobe `C:/Users/micro/elsewhere.txt` Exit 2 „outside every writable tree“. Das Wächterurteil stammt aus synthetischen Nutzlasten mit `cwd` = Projekt und ohne `permission_mode`; die Kombination aus Auto-Modus und Wächter in einer Live-Sitzung ist nicht gemessen. | keine |
 | 3 | bestanden | Nutzlasten des Teammates tragen `agent_id` (`aprobe-mate-…`) und `agent_type` = Name des Teammates (`probe-mate`, nicht der Definition); der Lead hat `agent_type: team-probe-lead` und kein `agent_id`. | nichts zu bauen (Spec 11 bleibt: keine Write-Begrenzung je Rolle in diesem Plan) |
 | 4 | bestanden | `hooks.jsonl` hat Einträge von Lead und Teammate (Hooks aus `--settings`); `echo $TEAM_RUN_DIR` (Bash) und `echo $env:TEAM_RUN_DIR` (PowerShell) zeigen beim Teammate den Probe-Pfad | keine |
 | 5 | bestanden | AskUserQuestion erschien unter `--agent` (Antwort „yes“); Statuszeile `medium`; Nutzlast des Leads `effort: {"level": "medium"}` | keine |
-| 6 | bestanden | Haiku-Teammate mit `effort: high` startete fehlerfrei; seine Nutzlasten tragen `effort: {"level": "high"}` | keine |
-| 7 | bestanden | Bash beim Teammate: Hook verweigert („probe: refused by the PreToolUse hook“), Deny-Regel verweigert („Permission to use Bash … has been denied“). PowerShell: der Hook feuert beim Teammate (Matcher `Bash\|PowerShell`, Eintrag für `echo $env:TEAM_RUN_DIR`); Exit 2 und Deny-Regel für PowerShell per `claude -p --settings … --allowedTools PowerShell` geprobt: beide verweigert | keine |
-| 8 | bestanden | Teammate entstand aus `~/.claude/agents/team-probe-mate.md` (Meta `customAgentType: team-probe-mate`, `model: haiku`, `taskKind: in_process_teammate`) | keine |
-| 9 | bestanden | Teammate setzte Task 2 per TaskUpdate auf `pending` mit `WAITING: smoke test 9` und beendete den Zug; `hooks.jsonl` enthält **kein** `task-completed` | `WAIT_MARKER` bleibt aus |
+| 6 | bestanden | Haiku-Teammate mit `effort: high` startete fehlerfrei; seine Nutzlasten tragen `effort: {"level": "high"}`. Die Wirkung des Efforts selbst ist nicht messbar. | keine |
+| 7 | bestanden, mit Lücke | Bash beim Teammate: Hook verweigert („probe: refused by the PreToolUse hook“), Deny-Regel verweigert („Permission to use Bash … has been denied“). PowerShell beim Teammate: nur das **Feuern** des Hooks belegt (Matcher `Bash\|PowerShell`, Eintrag für `echo $env:TEAM_RUN_DIR` mit `agent_id`). Exit 2 und Deny-Regel für PowerShell nur in einer **Hauptsitzung** geprobt (`claude -p --settings … --allowedTools PowerShell`, Sitzung `044154e4…`, beide verweigert). Die Verweigerung beim Teammate für PowerShell ist aus der Bash-Hälfte geschlossen, nicht gemessen. | Task 6 holt es nach (Ende-zu-Ende-Lauf) |
+| 8 | bestanden | Teammate entstand aus `~/.claude/agents/team-probe-mate.md` (Meta `customAgentType: team-probe-mate`, `model: haiku`, `taskKind: in_process_teammate`). Werkzeuge: die der Definition plus TaskCreate/TaskGet/TaskList/TaskUpdate/SendMessage, die er nicht in `tools:` hat — genau wie Spec Abschnitt 2 Punkt 12 vorhersagt; die Definition begrenzt diese fünf nicht. Ob sie Werkzeuge außerhalb der Liste (etwa Edit) fernhält, wurde nicht geprobt. | keine; die Rollentabellen in Task 4 listen die Team-Werkzeuge ohnehin nicht als Grenze |
+| 9 | bestanden | Teammate setzte Task 2 per TaskUpdate auf `pending` mit `WAITING: smoke test 9` und beendete den Zug; `hooks.jsonl` enthält **kein** `task-completed`; sein Transkript hat genau eine Nachricht des Leads, keine Wiederholung | `WAIT_MARKER` bleibt aus |
 | 10 | bestanden | IDs sind Dezimalzahlen als Text (`"1"`, `"2"`, …); der zweite Lead zählte wieder ab `"1"` | keine (`g<gen>` im Dateinamen trägt das) |
 | 11 | bestanden | `post-task-update` mit `tool_input: {"taskId": "4", "status": "deleted"}` | Schlüssel wie im Plan, nichts zu ändern |
 | 12 | bestanden | Agent-Aufruf ohne `name` lief als Hintergrund-Subagent (Meta `requestShape: background`, kein `teamName`) und lieferte `PONG` per Benachrichtigung | keine; Hinweis: die Ergebnisse unbenannter Helfer kommen asynchron |
 
 Kein Rauchtest fiel durch; kein Rückfall aus Task 1 Step 9 ist anzuwenden.
+
+**Offen, und wer es schließt:**
+
+- Eine echte `TaskCompleted`-Nutzlast fehlt (siehe unten). Task 2 baut auf
+  den Feldern der Doku (`task_id`, `task_subject`, `task_description`), die
+  in der gemessenen `TaskCreated`-Nutzlast genau so heißen. Task 6 sieht die
+  echte Nutzlast; weicht sie ab, ist das ein Befund für `teamgate_tasks.py`.
+- PowerShell-Verweigerung beim Teammate (Rauchtest 7): Task 6.
 
 ## Weitere Beobachtungen
 
@@ -45,10 +53,11 @@ Kein Rauchtest fiel durch; kein Rückfall aus Task 1 Step 9 ist anzuwenden.
   `git branch --dry-run --delete-merged …`, `rm -r .team-runs/<lauf>`,
   `rm .team-runs/.gitignore`, `rmdir .team-runs`, `uv run --script …
   team-gate.py … supersede`, `Remove-Item -Recurse <lauf>` (alle Exit 0).
-- `cwd` der Hook-Nutzlast ist das Arbeitsverzeichnis der **Sitzung**, auch
-  bei Aufrufen des Teammates. Die Befehlsprüfung löst relative Pfade
-  dagegen auf; das `cd`-Nachführen innerhalb eines Befehls bleibt der einzige
-  Weg, ein anderes Verzeichnis zu kennen.
+- Alle Nutzlasten tragen `cwd` = Arbeitsverzeichnis der Sitzung, auch die
+  des Teammates. Der Teammate hatte aber nie ein eigenes Verzeichnis; ob
+  `cwd` einem `cd` des Teammates folgt, sagt dieser Lauf nicht. Folgerung,
+  nicht gemessen: Die Befehlsprüfung löst relative Pfade gegen `cwd` auf und
+  kennt ein anderes Verzeichnis nur über ein `cd` im selben Befehl.
 - Die Nutzlasten tragen zusätzlich `team_name` (`session-<id>`) und
   `prompt_id`; `team-gate.py` braucht keines davon.
 - Ein `task-completed` wurde in diesem Lauf nicht beobachtet (Absicht von
@@ -57,6 +66,10 @@ Kein Rauchtest fiel durch; kein Rückfall aus Task 1 Step 9 ist anzuwenden.
   sie im echten Lauf.
 
 ## Wörtliche Nutzlasten
+
+Gekürzt sind nur die Felder `transcript_path`, `scratchpad_dir` und
+`prompt_id` (als `…` markiert oder weggelassen, wo genannt); alles andere
+steht wie in `hooks.jsonl`.
 
 `TaskCreated` (Teammate):
 
