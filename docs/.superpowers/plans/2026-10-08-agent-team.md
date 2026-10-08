@@ -1230,7 +1230,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import subprocess
-import sys
 from types import ModuleType
 
 import pytest
@@ -1290,19 +1289,17 @@ def test_any_internal_error_refuses(world: World, capsys: pytest.CaptureFixture[
     assert "team-gate failed, refusing: JSONDecodeError" in capsys.readouterr().err
 
 
+HOOK = ["uv", "run", "--quiet", "--script", str(ENTRY)]  # exactly as the settings of a run call it
+
+
 def test_the_script_runs_as_a_hook_process(world: World) -> None:
     # UTF-8 on stdin whatever the console code page is: the run folder and the title carry umlauts.
+    # Through uv, because only that proves the script finds teamgate_tasks next to itself.
     payload = json.dumps({"task_id": "h", "task_subject": "[hunt] R1.P1 Prüfung"}, ensure_ascii=False).encode("utf-8")
-    out = subprocess.run(
-        [sys.executable, str(ENTRY), "--run", str(world.run.dir), "task-created"],
-        input=payload, capture_output=True, check=False,
-    )
+    out = subprocess.run([*HOOK, "--run", str(world.run.dir), "task-created"], input=payload, capture_output=True, check=False)
     assert (out.returncode, out.stderr) == (0, b"")
     assert "Prüfung" in (world.run.dir / "tasks.jsonl").read_text(encoding="utf-8")
-    out = subprocess.run(
-        [sys.executable, str(ENTRY), "--run", str(world.run.dir), "supersede", "1:x"],
-        capture_output=True, check=False,
-    )
+    out = subprocess.run([*HOOK, "--run", str(world.run.dir), "supersede", "1:x"], capture_output=True, check=False)
     assert (out.returncode, out.stderr.decode("utf-8").splitlines()) == (2, ["no open task g1 x in the register"])
 ````
 

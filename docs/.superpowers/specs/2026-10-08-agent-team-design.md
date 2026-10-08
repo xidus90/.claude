@@ -738,6 +738,16 @@ Teile, die an ihm hängen; fällt er durch, gilt der Rückfall.
 - **Skills laden ist Modellsache.**
 - **Agent-Teams sind experimentell**; `run.json` hält Claude-Code- und
   git-Version jedes Laufs fest.
+- **`status.md` unter Windows**: Hält gerade jemand die Datei offen (etwa der
+  Lead beim Lesen), scheitert `os.replace` mit einer Sharing Violation; der
+  Hook endet mit Exit 2, der Teammate wiederholt. Vorübergehend, aber
+  sichtbar.
+- **Verlorenes Urteil**: Fehlt die Urteilsdatei eines abgeschlossenen Tasks
+  (gelöscht, verschoben), wirft jeder spätere Hook, der die Geschichte der
+  Wurzel liest, `GateError`; der Lauf steht fail-closed, und `-Resume` mit
+  `supersede` hilft nicht, weil abgeschlossene Tasks nicht ersetzt werden.
+  Ausweg ist heute nur, die Datei aus dem Gedächtnis des Teammates neu zu
+  schreiben oder den Lauf aufzugeben.
 - **Kosten**: Jeder Teammate ist eine eigene Sitzung. Der Orchestrator hält
   höchstens 5 Teammates gleichzeitig (Empfehlung der Doku: 3–5).
 
@@ -832,8 +842,10 @@ es dabei.
    ohne Abhängigkeiten); die Task-Tore liegen in `scripts/teamgate_tasks.py`,
    die Befehlsprüfung in `scripts/teamgate_cmd.py`, Tests unter
    `scripts/tests/teamgate/`. `uv run --script` legt das Skriptverzeichnis auf
-   den Importpfad. Gemessen: warm ~115 ms je Aufruf, `python -S` ~60 ms; beide
-   weit unter dem Timeout von 30 s.
+   den Importpfad (geprobt: der Aufruf mit `pre-tool-use` und einem
+   `git push` endet mit Exit 2 und der Meldung des Hooks; der Prozess-Test in
+   `test_entry.py` fährt genau diese Aufrufform). Gemessen: warm ~115 ms je
+   Aufruf, `python -S` ~60 ms; beide weit unter dem Timeout von 30 s.
 2. **`supersede`** nimmt `<gen>:<task_id>`, weil Task-IDs je Generation neu
    zählen können (Rauchtest 10). Ein Schlüssel ohne Generation wird
    abgelehnt.
