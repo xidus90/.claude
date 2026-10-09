@@ -184,7 +184,7 @@ Sie gelten nur in Sitzungen, die der Starter öffnet.
 **Tests:**
 
 ```
-uv run --no-project --python 3.13 --with pytest --with pytest-cov --with pytest-xdist --with pyyaml pytest scripts/tests/teamgate -q -n 8 --cov=scripts --cov-branch --cov-fail-under=100
+uv run --no-project --python 3.13 --with pytest --with pytest-cov --with pytest-xdist --with pyyaml pytest scripts/tests/teamgate -q -n 8 --cov=scripts --cov-config=scripts/tests/teamgate/coverage.ini --cov-fail-under=100
 ```
 
 ## Agent-Panel
