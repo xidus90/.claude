@@ -72,6 +72,15 @@ async function openPane($: EngineInterface, byUser: boolean): Promise<void> {
   void refresh($)
 }
 
+// A pane listing that fails counts as no pane shown, so a spawn can still open it.
+async function isShown($: EngineInterface): Promise<boolean> {
+  try {
+    return isOpen(await $.ui.panes(), PANE)
+  } catch {
+    return false
+  }
+}
+
 const total = (v: View): number => v.status.running + v.status.done + v.status.failed + v.status.aborted
 
 // The plain text drawing, for when the graphic one cannot be built.
@@ -141,8 +150,7 @@ export const register: Register = (on) => {
     if (started.deny !== undefined) return started
     const decision = onSpawn(spawnLog, await $.clock.now(), e.isTeammate === true)
     spawnLog = decision.log
-    const isShown = isOpen(await $.ui.panes(), PANE)
-    if (!isShown && (!hasOpened || decision.shouldOpen)) await openPane($, false)
+    if (!(await isShown($)) && (!hasOpened || decision.shouldOpen)) await openPane($, false)
     else void refresh($)
     return started
   })

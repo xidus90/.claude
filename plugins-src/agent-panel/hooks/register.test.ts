@@ -209,6 +209,7 @@ test('the desktop draws SVG pieces and a crab per role when wide', async ($, on)
   const ui = await $.ui.mount(WIDE('desktop'))
   expect(await ui.find({ key: 'svg-tiles' })).toBeDefined()
   expect(await ui.find({ key: 'crab-implementer-backend' })).toBeDefined()
+  expect(await ui.find({ type: 'Svg' })).toBeDefined()
   await ui.unmount()
   const narrow = await $.ui.mount(NARROW('desktop'))
   expect(await narrow.find({ key: 'crab-implementer-backend' })).toBeUndefined()
@@ -270,6 +271,17 @@ test('a drawing that throws falls back to the text tree with a warning', async (
   expect(await ui.find({ type: 'Text', text: /^⚠ Grafik: / })).toBeDefined()
   expect(await ui.find({ key: 'g-implementer-backend' })).toBeDefined()
   expect(await ui.find({ key: 'sec-overview' })).toBeUndefined()
+})
+
+test('a denied pane listing still lets the first spawn open the pane', async ($, on) => {
+  mock.clock(on)
+  const opened: string[] = []
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), opened, [], [], '', () => true)
+  on('config.list', () => ({ value: [] }))
+  on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }))
+  await $.session.start(START)
+  await $.agent.spawn({ subagentType: 'implementer-backend', description: 'x', prompt: 'x', isTeammate: true })
+  expect(opened).toEqual(['agent-panel'])
 })
 
 test('a failed theme read falls back to the light palette and still draws', async ($, on) => {
