@@ -120,7 +120,7 @@ Node kann; `hooks/` läuft im Mod und darf nur `$`.
 | `cli/price.ts` | Preistabelle je Modell (Input, Output, Cache-Read, Cache-Write 5m, Cache-Write 1h) → USD. | — |
 | `cli/classify.ts` | Rolle aus `customAgentType`, sonst `agentType`; Task-Art und Wurzel aus dem Namen. | — |
 | `hooks/view.ts` | Reine Funktionen ohne `$`: aus Zusammenfassung, Live-Status und Uhrzeit die Anzeige bauen (Kopf, Gruppen, Zeilen, Abgleich, Formatierung). | — |
-| `hooks/register.ts` | Verdrahtung: beim `session.start` den Befehl `/agent-panel` registrieren und den Takt `$.clock.every(2000)` starten; je Takt `$.process.run(['node', …])`, Ergebnis parsen, `$.agent.list()` und `$.session.usage()` lesen, `$.ui.invalidate`; Panel beim ersten `agent.spawn` öffnen; `/agent-panel` schaltet es an und aus (im Terminal öffnet sich das Dock von selbst erst ab 144 Spalten, von Hand ab 110); `ui.render` zeichnet das Ergebnis von `view.ts`. UI über `$.ui.resolve(e)`-Elemente, kein JSX. Keine eigene Logik. | `hooks/view.ts` |
+| `hooks/register.ts` | Verdrahtung: beim `session.start` den Befehl `/agent-panel` registrieren und den Takt `$.clock.every(2000)` starten; je Takt — aber erst, wenn das Panel in dieser Sitzung einmal geöffnet wurde, damit Sitzungen ohne Agents nie ein `node` starten — `$.process.run(['node', …])`, Ergebnis parsen, `$.agent.list()` und `$.session.usage()` lesen, `$.ui.invalidate`; Panel beim ersten `agent.spawn` öffnen; `/agent-panel` schaltet es an und aus (im Terminal öffnet sich das Dock von selbst erst ab 144 Spalten, von Hand ab 110); `ui.render` zeichnet das Ergebnis von `view.ts`. UI über `$.ui.resolve(e)`-Elemente, kein JSX. Keine eigene Logik. | `hooks/view.ts` |
 
 **Cache-Datei:** `<tmp>/agent-panel/<session-id>.json`, nicht unter dem
 Plugin-Verzeichnis, das ein Update ersetzt. Fehlt oder ist sie unlesbar, liest
@@ -166,7 +166,9 @@ Agents · Lauf 20261009-113117 (Gen 1–2)
 - **Zählung je Antwort:** je `message.id` zählt nur die letzte Zeile
   (Abschnitt 2, Punkt 6). Zeilen ohne `message.id` zählen einzeln.
 - **Tokens** = Input + Output + Cache-Write + Cache-Read. Die Aufschlüsselung
-  steht im Detail (Desktop: Tooltip, Terminal: ausgeklappte Zeile).
+  steht in einer Detailzeile, die ein Druck auf die Agent-Zeile auf- und
+  zuklappt, auf beiden Oberflächen gleich (`in 68 · out 3.5k · read 1.4M ·
+  write 163k/0`, Cache-Write als 5m/1h).
 - **Kosten** = Σ Token-Art × Preis des Modells der jeweiligen Nachricht.
 - **Dauer je Agent** = erste bis letzte Nachricht; läuft er, bis jetzt.
 - **Zeit im Kopf** = Summe über die Generationen; je Generation die Wanduhr
@@ -201,7 +203,8 @@ nicht mehr im Speicher —, bekommt den Status aus dem Transkript.
 Die Lead-Zeile der laufenden Generation zeigt neben dem errechneten Betrag den
 Wert aus `$.session.usage().cost`. Weichen beide um mehr als 10 % ab, steht
 dort „⚠ Preistabelle prüfen“. Verglichen wird der Wert mit dem Umfang, den
-Claude Code tatsächlich meldet: Die erste Aufgabe des Plans misst, ob `cost`
+Claude Code tatsächlich meldet: Eine Messaufgabe des Plans (nach dem Skript,
+weil sie es braucht) misst, ob `cost`
 die Agents der Sitzung einschließt. Schließt er sie ein, ist die
 Vergleichsgröße die errechnete Summe der laufenden Sitzung (Lead + ihre
 Agents); sonst nur der Lead der laufenden Generation.

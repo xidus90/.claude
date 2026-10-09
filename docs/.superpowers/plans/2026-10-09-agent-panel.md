@@ -764,7 +764,7 @@ test('matches the independent tally of a real teammate transcript', () => {
 `cli/transcript.ts`:
 
 ```ts
-import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
+import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs'
 import { costOf } from './price.ts'
 import type { EndState, TokenCounts } from '../shared/summary.ts'
 
@@ -869,6 +869,8 @@ export function applyLines(prev: FileState, text: string): FileState {
 }
 
 export function readTranscript(path: string, prev: FileState): FileState {
+  // POSIX opens a directory and reports size 0, which would read as an empty transcript.
+  if (statSync(path).isDirectory()) throw new Error('ist ein Ordner')
   const fd = openSync(path, 'r')
   try {
     const size = fstatSync(fd).size
@@ -1548,12 +1550,12 @@ Erster Lauf = kalt, zweiter = warm. `TICK_MS` nach der Regel oben.
 - Produces:
   - `type LiveAgent = { id: string; status: string }`
   - `type Glyph = '●' | '✓' | '✗' | '⊘'`
-  - `type Row = { key: string; glyph: Glyph; label: string; model: string; cost: string; tokens: string; time: string; note: string }`
+  - `type Row = { key: string; glyph: Glyph; label: string; model: string; cost: string; tokens: string; time: string; note: string; detail: string }`
   - `type Group = { key: string; title: string; cost: string; tokens: string; time: string; costUsd: number; isRunning: boolean; rows: Row[] }`
   - `type View = { title: string; totals: string; counts: string; notices: string[]; groups: Group[] }`
   - `type ViewInput = { summary: Summary | null; live: LiveAgent[]; reportedCostUsd: number | null; costIncludesAgents: boolean; now: number; error: string }`
   - `buildView(input: ViewInput): View`
-  - `groupLine(g: Group, isCollapsed: boolean): string`, `rowLine(r: Row): string`, `glyphColor(g: Glyph): string`
+  - `groupLine(g: Group, isCollapsed: boolean): string`, `rowLine(r: Row): string` (ohne Glyphe), `detailLine(r: Row): string`, `glyphColor(g: Glyph): string`
   - `parseResult(r: { exitCode: number; stdout: string; stderr: string }): { summary: Summary | null; error: string }`
   - `startError(err: unknown): string`
   - `reportedCost(cost: unknown): number | null`
@@ -1567,7 +1569,7 @@ Erster Lauf = kalt, zweiter = warm. `TICK_MS` nach der Regel oben.
 ```ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildView, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, type ViewInput } from '../hooks/view.ts'
+import { buildView, detailLine, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, type ViewInput } from '../hooks/view.ts'
 import type { AgentSummary, Summary } from '../shared/summary.ts'
 
 const MIN = 60_000
@@ -1698,8 +1700,10 @@ test('renders group and row lines', () => {
   assert.ok(g)
   assert.equal(groupLine(g, false), `▾ Agents  $0.50  3k  1:00`)
   assert.equal(groupLine(g, true), `▸ Agents  $0.50  3k  1:00`)
-  assert.equal(rowLine(g.rows[0] ?? assert.fail()), '  ✗ e  Sonnet 5.5  $0.50  3k  1:00  boom')
-  assert.equal(rowLine({ ...(g.rows[0] ?? assert.fail()), note: '' }), '  ✗ e  Sonnet 5.5  $0.50  3k  1:00')
+  const row = g.rows[0] ?? assert.fail()
+  assert.equal(rowLine(row), 'e  Sonnet 5.5  $0.50  3k  1:00  boom')
+  assert.equal(rowLine({ ...row, note: '' }), 'e  Sonnet 5.5  $0.50  3k  1:00')
+  assert.equal(detailLine(row), '      in 1k · out 2k · read 0 · write 0/0')
   assert.deepEqual(['●', '✓', '✗', '⊘'].map((x) => glyphColor(x as '●')), ['cyan', 'green', 'red', 'yellow'])
 })
 
@@ -1751,7 +1755,7 @@ import type { AgentSummary, Summary, TokenCounts } from '../shared/summary.ts'
 
 export type LiveAgent = { id: string; status: string }
 export type Glyph = '●' | '✓' | '✗' | '⊘'
-export type Row = { key: string; glyph: Glyph; label: string; model: string; cost: string; tokens: string; time: string; note: string }
+export type Row = { key: string; glyph: Glyph; label: string; model: string; cost: string; tokens: string; time: string; note: string; detail: string }
 export type Group = { key: string; title: string; cost: string; tokens: string; time: string; costUsd: number; isRunning: boolean; rows: Row[] }
 export type View = { title: string; totals: string; counts: string; notices: string[]; groups: Group[] }
 export type ViewInput = {
@@ -1852,6 +1856,8 @@ export function buildView(input: ViewInput): View {
       tokens: fmtTokens(tokenSum(a.tokens)),
       time: fmtTime(a.firstAt === null ? 0 : (ended as number) - a.firstAt),
       note: reported || noteOf(a, glyph),
+      // Cache reads dwarf the rest, so the total alone says little.
+      detail: `in ${fmtTokens(a.tokens.input)} · out ${fmtTokens(a.tokens.output)} · read ${fmtTokens(a.tokens.cacheRead)} · write ${fmtTokens(a.tokens.cacheWrite5m)}/${fmtTokens(a.tokens.cacheWrite1h)}`,
     }
   }
 
@@ -1912,7 +1918,9 @@ export const groupLine = (g: Group, isCollapsed: boolean): string =>
   `${isCollapsed ? '▸' : '▾'} ${g.title}  ${g.cost}  ${g.tokens}  ${g.time}`
 
 export const rowLine = (r: Row): string =>
-  `  ${r.glyph} ${r.label}  ${r.model}  ${r.cost}  ${r.tokens}  ${r.time}${r.note ? `  ${r.note}` : ''}`
+  `${r.label}  ${r.model}  ${r.cost}  ${r.tokens}  ${r.time}${r.note ? `  ${r.note}` : ''}`
+
+export const detailLine = (r: Row): string => `      ${r.detail}`
 
 export const glyphColor = (g: Glyph): string => COLORS[g]
 
@@ -1996,7 +2004,15 @@ const GOOD = JSON.stringify({ runId: null, generations: ['s1'], agents: [LEAD], 
 
 type Run = { exitCode: number; stdout: string; stderr: string }
 
-function stub(on: Parameters<Parameters<typeof test>[1]>[1], runs: string[][], answer: () => Run | Promise<Run>, opened: string[], closed: string[], panes: string[]): void {
+function stub(
+  on: Parameters<Parameters<typeof test>[1]>[1],
+  runs: string[][],
+  answer: () => Run | Promise<Run>,
+  opened: string[],
+  closed: string[],
+  panes: string[],
+  deny = '',
+): void {
   on('session.start', () => ({ cwd: '/work' }))
   on('command.register', () => ({ value: undefined }))
   on('session.id', () => ({ value: 's1' }))
@@ -2004,7 +2020,7 @@ function stub(on: Parameters<Parameters<typeof test>[1]>[1], runs: string[][], a
   mock.env(on, { USERPROFILE: 'C:/Users/u', TEMP: 'C:/tmp' })
   on('process.run', async ($, e) => {
     runs.push(e.argv)
-    return { value: await answer() }
+    return deny ? { deny } : { value: await answer() }
   })
   on('agent.list', () => ({ value: [] }))
   on('session.usage', () => ({ value: { startedAt: 0, context: { tokens: 0, window: 1, percent: 0 }, rateLimits: [], cost: 0.024 } }))
@@ -2022,12 +2038,23 @@ function stub(on: Parameters<Parameters<typeof test>[1]>[1], runs: string[][], a
 }
 
 const START = { surface: 'terminal', isInteractive: true, cwd: '/work' } as const
+const TOGGLE = { command: 'agent-panel', args: '' } as const
+
+test('a session that never opened the panel starts no node', async ($, on) => {
+  const clock = mock.clock(on)
+  const runs: string[][] = []
+  stub(on, runs, () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [])
+  await $.session.start(START)
+  await clock.advance(10_000)
+  expect(runs.length).toBe(0)
+})
 
 test('the tick runs the summary script with the session and draws its totals', async ($, on) => {
   const clock = mock.clock(on)
   const runs: string[][] = []
   stub(on, runs, () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [])
   await $.session.start(START)
+  await $.command.run(TOGGLE)
   await clock.advance(2000)
   expect(runs[0]?.slice(2, 4)).toEqual(['--session', 's1'])
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
@@ -2042,6 +2069,7 @@ test('a tick while the script still runs starts no second one', async ($, on) =>
     return { exitCode: 0, stdout: GOOD, stderr: '' }
   }, [], [], [])
   await $.session.start(START)
+  await $.command.run(TOGGLE)
   await clock.advance(2000)
   await clock.advance(2000)
   expect(runs.length).toBe(1)
@@ -2075,7 +2103,7 @@ test('a failed script shows as a line and keeps the last good totals', async ($,
   let call = 0
   stub(on, [], () => (++call === 1 ? { exitCode: 0, stdout: GOOD, stderr: '' } : { exitCode: 1, stdout: '', stderr: 'boom' }), [], [], [])
   await $.session.start(START)
-  await clock.advance(2000)
+  await $.command.run(TOGGLE)
   await clock.advance(2000)
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ type: 'Text', text: '⚠ summarize exit 1: boom' })).toBeDefined()
@@ -2084,13 +2112,9 @@ test('a failed script shows as a line and keeps the last good totals', async ($,
 
 test('a missing node shows as a line', async ($, on) => {
   const clock = mock.clock(on)
-  on('session.start', () => ({ cwd: '/work' }))
-  on('command.register', () => ({ value: undefined }))
-  on('session.id', () => ({ value: 's1' }))
-  on('session.cwd', () => ({ value: '/work' }))
-  mock.env(on, { USERPROFILE: 'C:/Users/u', TEMP: 'C:/tmp' })
-  on('process.run', () => ({ deny: 'spawn node ENOENT' }))
+  stub(on, [], () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [], 'spawn node ENOENT')
   await $.session.start(START)
+  await $.command.run(TOGGLE)
   await clock.advance(2000)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /^⚠ node nicht gefunden/ })).toBeDefined()
@@ -2100,11 +2124,27 @@ test('a group button folds its rows away', async ($, on) => {
   const clock = mock.clock(on)
   stub(on, [], () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [])
   await $.session.start(START)
+  await $.command.run(TOGGLE)
   await clock.advance(2000)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: /^ {2}● Lead/ })).toBeDefined()
+  expect(await ui.find({ key: 'r-lead:s1' })).toBeDefined()
   await ui.press({ key: 'g-lead' })
-  expect(await ui.find({ type: 'Text', text: /^ {2}● Lead/ })).toBeUndefined()
+  expect(await ui.find({ key: 'r-lead:s1' })).toBeUndefined()
+})
+
+test('a row button shows and hides its token breakdown', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [])
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  const detail = { type: 'Text', text: /^ {6}in 1k · out 1k · read 0 · write 0\/0$/ } as const
+  expect(await ui.find(detail)).toBeUndefined()
+  await ui.press({ key: 'r-lead:s1' })
+  expect(await ui.find(detail)).toBeDefined()
+  await ui.press({ key: 'r-lead:s1' })
+  expect(await ui.find(detail)).toBeUndefined()
 })
 ```
 
@@ -2120,7 +2160,7 @@ Expected: FAIL — der Skelett-Mod ruft kein Skript, öffnet kein Pane.
 ```ts
 import type { EngineInterface, Register } from 'claude-code'
 import type { Summary } from '../shared/summary.ts'
-import { buildView, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, type LiveAgent } from './view.ts'
+import { buildView, detailLine, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, type LiveAgent } from './view.ts'
 
 const PANE = 'agent-panel'
 // Measured in docs/.superpowers/smoke/2026-10-09-agent-panel-probe.md.
@@ -2134,9 +2174,11 @@ let reported: number | null = null
 let isBusy = false
 let hasOpened = false
 const collapsed = new Set<string>()
+const expanded = new Set<string>()
 
 async function refresh($: EngineInterface): Promise<void> {
-  if (isBusy) return
+  // A session that never showed the panel never pays for a node start.
+  if (!hasOpened || isBusy) return
   isBusy = true
   try {
     const session = await $.session.id()
@@ -2183,6 +2225,7 @@ export const register: Register = (on) => {
 
   on('agent.spawn', async ($, e, next) => {
     const started = await next(e)
+    if (started.deny !== undefined) return started
     if (!hasOpened) await openPane($, false)
     else void refresh($)
     return started
@@ -2215,7 +2258,27 @@ export const register: Register = (on) => {
               $.ui.invalidate('ui.render')
             },
           }),
-          ...(collapsed.has(g.key) ? [] : g.rows.map((r) => Text({ color: glyphColor(r.glyph), wrap: 'truncate-end', children: [rowLine(r)] }))),
+          ...(collapsed.has(g.key)
+            ? []
+            : g.rows.flatMap((r) => [
+                Box({
+                  flexDirection: 'row',
+                  children: [
+                    Text({ color: glyphColor(r.glyph), children: [`  ${r.glyph} `] }),
+                    Button({
+                      key: `r-${r.key}`,
+                      plain: true,
+                      label: rowLine(r),
+                      onPress: () => {
+                        if (expanded.has(r.key)) expanded.delete(r.key)
+                        else expanded.add(r.key)
+                        $.ui.invalidate('ui.render')
+                      },
+                    }),
+                  ],
+                }),
+                ...(expanded.has(r.key) ? [Text({ dimColor: true, children: [detailLine(r)] })] : []),
+              ])),
         ]),
       ],
     })
@@ -2227,8 +2290,8 @@ Ist `$.plugin.root` laut Protokoll eine Methode, die Zeile zu `` `${await $.plug
 
 - [ ] **Step 4: Grün prüfen**
 
-Run: `npm run kit` → alle sieben Tests PASS. Meldet das Kit `no implementation for <name>`, fehlt in `stub()` ein Stub für diesen Aufruf: ihn nach der Tabelle in der Test-Doku (`code.claude.com/docs/en/plugins/mods/test.md`, „Look up what a stub returns“) ergänzen, nicht den Mod ändern.
-Run: `npm run validate` → `✔ Validation passed`; die Zeile `hooks:` nennt `session.start, command.run{command=agent-panel}, agent.spawn, turn.complete, ui.render{component=Pane,requestId=agent-panel}`.
+Run: `npm run kit` → alle neun Tests PASS. Meldet das Kit `no implementation for <name>`, fehlt in `stub()` ein Stub für diesen Aufruf: ihn nach der Tabelle in der Test-Doku (`code.claude.com/docs/en/plugins/mods/test.md`, „Look up what a stub returns“) ergänzen, nicht den Mod ändern.
+Run: `npm run validate` → `✔ Validation passed`; die Zeile `hooks:` nennt `session.start, command.run{command=agent-panel}, agent.spawn, turn.complete, ui.render{component=Pane,requestId=agent-panel}`. Scheitert `--strict` an `gating hook without .catch: agent.spawn` (der Hook kann einen Spawn verweigern), an die Registrierung einen Fehler-Handler nach der Doku anhängen (`code.claude.com/docs/en/plugins/mods/events.md`, „Handle a hook that fails“), der den Spawn unverändert durchlässt — nicht `--strict` streichen.
 Run: `npm run typecheck` → exit 0. Findet `tsc` das Modul `claude-code/testing` nicht, `"exclude": ["hooks/*.test.ts"]` in `tsconfig.json` setzen (das Kit prüft die Datei selbst).
 Run: `npm test` → PASS (unverändert 100 %).
 
@@ -2457,10 +2520,14 @@ Dieselbe Sitzung (`claude --resume <session>` aus der Desktop-App, Code-Tab) ode
 
 `node plugins-src/agent-panel/cli/summarize.ts --session <letzte Session> --cwd <repo> --home "$HOME" --cache <scratch>/check.json` und die `costUsd` aller Agents addieren; die Summe muss der Kopfzeile des Panels entsprechen. Gegenprobe: für zwei Agent-Transkripte das Zählskript `expect.js` aus Task 4 laufen lassen und Tokens vergleichen.
 
-- [ ] **Step 4: node nicht im PATH**
+- [ ] **Step 4: Abgleich nach `--resume`**
+
+Eine normale Sitzung mit einem Subagenten beenden, mit `claude --resume <session>` fortsetzen, `/agent-panel`. Notieren, ob `gemeldet $…` der Lead-Zeile den Verbrauch vor der Unterbrechung enthält. Enthält er ihn nicht, meldet der Abgleich nach jedem Resume „Preistabelle prüfen“, obwohl die Tabelle stimmt: dann im Protokoll festhalten und dem Nutzer vorlegen (Vorschlag: Abgleich nur über die Nachrichten seit dem letzten Start, `usage().startedAt`), nicht still ändern.
+
+- [ ] **Step 5: node nicht im PATH**
 
 Claude Code aus einer Shell mit `PATH` ohne Node starten (`$env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'nodejs' }) -join ';'; claude`), `/agent-panel`: Panel zeigt `⚠ node nicht gefunden: …`, die Sitzung läuft normal weiter.
 
-- [ ] **Step 5: Protokoll und Commit**
+- [ ] **Step 6: Protokoll und Commit**
 
 Protokoll mit Datum, Claude-Code-Version, je Schritt Erwartung, Beobachtung, Screenshot-Pfad (Scratchpad, nicht eingecheckt). Commit: `Record the agent panel smoke test`
