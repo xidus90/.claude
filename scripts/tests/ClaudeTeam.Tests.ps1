@@ -122,6 +122,10 @@ Describe 'New-TeamSettings' {
         $Settings.hooks.PostToolUse[0].matcher | Should -Be 'TaskUpdate'
         $Settings.hooks.PreToolUse[0].matcher | Should -Be 'Bash|PowerShell'
         $Settings.hooks.TaskCreated[0].ContainsKey('matcher') | Should -BeFalse
+        $ask = $Settings.hooks.PostToolUse[1]
+        $ask.matcher | Should -Be 'AskUserQuestion'
+        $ask.hooks[0].timeout | Should -Be 30
+        $ask.hooks[0].command | Should -Match '^uv run --script ".*/team-gate\.py" --run ".*/\.team-runs/r1" post-ask-user$'
     }
     It 'denies push, merge and --no-verify for Bash and PowerShell' {
         $Settings.permissions.deny | Should -HaveCount 6

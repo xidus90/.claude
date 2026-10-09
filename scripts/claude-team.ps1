@@ -175,7 +175,10 @@ function New-TeamSettings {
         hooks       = [ordered]@{
             TaskCreated   = @(@{ hooks = @(hook 'task-created') })
             TaskCompleted = @(@{ hooks = @(hook 'task-completed') })
-            PostToolUse   = @(@{ matcher = 'TaskUpdate'; hooks = @(hook 'post-task-update') })
+            PostToolUse   = @(
+                @{ matcher = 'TaskUpdate'; hooks = @(hook 'post-task-update') }
+                @{ matcher = 'AskUserQuestion'; hooks = @(hook 'post-ask-user') }
+            )
             PreToolUse    = @(@{ matcher = 'Bash|PowerShell'; hooks = @(hook 'pre-tool-use') })
         }
         permissions = @{ deny = @($deny) }
