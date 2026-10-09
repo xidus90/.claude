@@ -181,9 +181,14 @@ Agents · Lauf 20261009-113117 (Gen 1–2)
 | Glyphe | Bedeutung | Quelle laufende Sitzung | Quelle frühere Generation |
 |---|---|---|---|
 | ● | läuft (auch `pending`, `waiting`, `idle`) | `$.agent.list()` | — |
-| ✓ | fertig | `completed` | letzte Assistant-Nachricht ohne Fehler |
-| ✗ | gescheitert | `failed`, `killed` | letzte Nachricht ist ein API-Fehler |
-| ⊘ | abgebrochen | — | weder Antwort noch Fehler am Ende (Lead starb) |
+| ✓ | fertig | `completed` | mindestens eine abgeschlossene Antwort (`stop_reason: end_turn`), und die letzte Assistant-Zeile ist kein API-Fehler |
+| ✗ | gescheitert | `failed`, `killed` | die letzte Assistant-Zeile ist ein API-Fehler (`isApiErrorMessage`) |
+| ⊘ | abgebrochen | — | keine einzige abgeschlossene Antwort und kein API-Fehler am Ende |
+
+Nicht „die letzte Zeile“: Ein Teammate endet im Transkript nach der
+Shutdown-Nachricht des Leads mit einem Tool-Ergebnis, nicht mit seiner Antwort
+(gemessen am e2e-Lauf vom 2026-10-09, `fix-B1` und `impl-T1`). Der Lead einer
+früheren Generation folgt derselben Regel.
 
 **Zuordnung:** Ein Eintrag aus `$.agent.list()` gehört zu der Datei, deren
 `agentId` (Stamm des Dateinamens) gleich seiner `id` ist. Ein Agent, den
@@ -250,7 +255,8 @@ der Name auf keine Form, steht er unverändert da.
   läuft (sie spricht nur `$`). Dafür enthält sie keine Logik: jede
   Entscheidung (Formatierung, Sortierung, Abgleich, Fehlertext) liegt in
   `view.ts`; das Kit prüft nur, dass jede Verdrahtung einmal feuert.
-- **Typen:** `tsc --noEmit --strict`; einzige Dev-Abhängigkeit `typescript`.
+- **Typen:** `tsc --noEmit --strict`; Dev-Abhängigkeiten nur `typescript` und
+  `@types/node` (für `cli/`).
   Die Mod-Typen schreibt Claude Code beim Laden mit `--plugin-dir` nach
   `.claude-plugin/types/`; sie werden eingecheckt, damit `tsc` ohne Sitzung
   läuft. Kein `any`. Node entfernt Typen nur, statt zu übersetzen: Die
