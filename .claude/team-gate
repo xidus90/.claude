@@ -1,0 +1,1 @@
+npm ci --prefix plugins-src/agent-panel --no-audit --no-fund && npm --prefix plugins-src/agent-panel test && npm --prefix plugins-src/agent-panel run typecheck

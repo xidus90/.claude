@@ -17,6 +17,9 @@
 !/docs/
 !/plugins-src/
 !/.claude-plugin/
+!/.claude/
+/.claude/*
+!/.claude/team-gate
 
 # Dev tooling of the plugins; package-lock.json pins it.
 /plugins-src/*/node_modules/
