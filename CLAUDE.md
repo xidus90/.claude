@@ -28,36 +28,6 @@ Langfassung mit allen Begründungen:
   Hooks, Slash-Befehle). Kein doppelter Inhalt: Was in beiden stünde, gehört in
   die `AGENTS.md`.
 
-## Gelernte Muster
-
-Wiederkehrende Fehler und Muster mit ihrem Lösungsansatz stehen in
-`~/.claude/AGENT_LEARNINGS.md`. So wird die Datei gepflegt:
-
-- **Wann ein Eintrag entsteht:** wenn ein Fehler oder Muster zum zweiten Mal
-  auftritt, oder wenn der Nutzer einen Fehler korrigiert, der sich wiederholen
-  kann. Jeder Eintrag hat die Form Muster, Ursache, Lösungsansatz, Beleg
-  (Zähler, siehe unten).
-- **Erst suchen, dann schreiben:** Deckt ein Eintrag das Muster schon ab, wird
-  er geschärft statt dupliziert. Ein Eintrag, der sich als falsch erweist, wird
-  gelöscht.
-- **Der Beleg ist ein Zähler:** `Beleg: N× (M trotz Eintrag), zuletzt
-  <Datum>`. Je Sitzung wird N um eins erhöht, auch wenn der Fehler darin
-  mehrmals auftrat; M zusätzlich, wenn der Eintrag schon bestand; das Datum
-  wird auf heute gesetzt. Keine Liste der Einzelfälle daneben. Eine neue
-  Variante (anderer Befehl, anderer Auslöser) wandert in Muster oder
-  Lösungsansatz, die Einzelheiten des Falls nicht in die Datei.
-- **Wiederholung trotz Eintrag heißt mechanisieren:** Tritt ein Muster erneut
-  auf, nachdem sein Eintrag schon bestand, wirkt der Text nicht. Dann wird
-  geprüft, ob Hook, Wächterregel oder Lint es erzwingen können, und dem Nutzer
-  vorgeschlagen; geht es nicht, steht der Grund im Eintrag. Der Zähler M zeigt,
-  wo das nötig ist.
-- **Nur Projektübergreifendes:** Was nur für ein Projekt gilt, gehört in dessen
-  Memory oder `AGENTS.md`.
-- **Vorschläge machen:** Fällt etwas auf, das in die Datei gehören könnte — ein
-  Muster, das erst einmal aufgetreten ist, eine Lösung, die sich bewährt hat,
-  ein veralteter oder ungenauer Eintrag —, dann schlage es dem Nutzer mit einem
-  Satz vor, statt es stillschweigend einzutragen oder zu übergehen.
-
 ## ultraloom: die Go-Befehle, und wann Python zu ersetzen ist
 
 Stand 2026-09-10, gelesen aus `cmd/guard` und `cmd/init` im Repo `ultraloom`.
