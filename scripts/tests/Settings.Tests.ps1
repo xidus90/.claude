@@ -25,7 +25,6 @@ Describe 'settings.json' {
         @{ Plugin = 'superpowers@claude-plugins-official' }
         @{ Plugin = 'code-review@claude-plugins-official' }
         @{ Plugin = 'security-guidance@claude-plugins-official' }
-        @{ Plugin = 'browser-use@browser-use' }
         @{ Plugin = 'agent-panel@claude-config' }
     ) {
         $script:Settings.enabledPlugins.$Plugin | Should -BeTrue
@@ -56,8 +55,11 @@ Describe 'settings.json' {
         # The entire point of the repo is that a second PC gets the same
         # configuration. A path under one account's home directory silently
         # does nothing on any other account, and nothing would report it.
-        $raw = Get-Content (Join-Path $script:RepoRoot 'settings.json') -Raw
-        $raw | Should -Not -Match '(?i)C:\\\\Users\\\\'
+        # autoMode.environment is prose the auto-mode classifier reads, not a
+        # path anything opens, so a trusted repo may be named there.
+        $settings = Get-Content (Join-Path $script:RepoRoot 'settings.json') -Raw | ConvertFrom-Json
+        if ($settings.autoMode) { $settings.autoMode.PSObject.Properties.Remove('environment') }
+        $settings | ConvertTo-Json -Depth 20 | Should -Not -Match '(?i)C:\\\\Users\\\\'
     }
 
     It 'resolves the SessionStart hook relative to the running user' {

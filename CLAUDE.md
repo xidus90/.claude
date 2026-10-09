@@ -9,14 +9,13 @@ Langfassung mit allen Begründungen:
 - Specs, Pläne und SDD nach `docs/.superpowers/` im Projektrepo. Was der
   Plan-Modus nach `~/.claude/plans/` schreibt, wird nach der Freigabe dorthin
   kopiert.
-- Subagenten: `model: "opus"`, `effort: "low"` — beides **explizit** setzen,
-  Erben fällt sonst still auf den Sitzungswert zurück.
 - TDD. 100 % Coverage, ein Ausschluss immer mit Begründung. Statische Typen,
   kein `Any` und kein `type: ignore` ohne Grund.
 - Python: `uv`, nie `pip`. Einzelne Skripte mit PEP-723-Header über
   `uv run --script`, Werkzeuge über `uvx`.
-- Doku, Prosa und Kommentare deutsch; Code, Bezeichner, Commits, Branches und
-  Meldungen englisch.
+- Doku und Prosa deutsch; Code, Code-Kommentare, Bezeichner, Commits,
+  Branches und Meldungen englisch. Code-Kommentare immer englisch, auch wenn
+  ein Projekt sonst deutsch dokumentiert.
 - Nie ein Modell als Mitautor im Commit. Kein `Co-Authored-By:` auf Claude,
   Anthropic oder ein anderes LLM, keine Werbezeile im Commit-Text oder im
   PR-Rumpf. Das schlägt den Vorgabetext des Werkzeugs; Autor ist der Mensch.
@@ -28,26 +27,6 @@ Langfassung mit allen Begründungen:
   ausschließlich das, was wirklich Claude-spezifisch ist (Skills, Subagenten,
   Hooks, Slash-Befehle). Kein doppelter Inhalt: Was in beiden stünde, gehört in
   die `AGENTS.md`.
-
-## Fehler, die ich sonst mache
-
-- **Kommentare und Specs gegen den Code nachrechnen, nicht lesen.** Eine
-  falsche Begründung an korrektem Code ist der häufigste Befund hier — auch in
-  Plänen und Aufgabenbriefen. Wer eine Briefbehauptung widerlegt, hat meistens
-  recht.
-- **Optionen mit Zahlen erst rechnen und messen, dann vorlegen.** Keine
-  Prosa-Gegenüberstellung mit Empfehlung.
-- **Wirkt ein Entwurf unstimmig, ein konkretes anderes Spiel danebenlegen** —
-  keinen weiteren Optionssatz.
-- **Ein Shell-Befehl, eine Frage.** Lange `&&`-Ketten überschreiten die
-  automatisch prüfbare Länge und erzwingen eine Handprüfung.
-- **Mehrzeilige Commit-Nachrichten über eine Datei und `-F`**, nie über ein
-  Heredoc. Ein `--amend` zur Reparatur löst das teure Commit-Gate aus.
-- **Nach Subagenten in einem Repo mit Remote `git ls-remote` lesen**, nicht dem
-  Bericht glauben. `git remote -v` zeigt nur die URL.
-- **Vor jedem Commit Zweig und HEAD lesen.** Eine fremde Sitzung im selben
-  Checkout leert den Index; Git schreibt dann einen leeren Commit und meldet
-  Erfolg.
 
 ## ultraloom: die Go-Befehle, und wann Python zu ersetzen ist
 
@@ -126,5 +105,30 @@ Sitzungshooks `ultraloom hook session-start|stop|subagent-start|subagent-stop`
 und `ultraloom run|show|resume|replay|check`. Nur die beiden Pro-Edit-Hooks
 sind Go.
 
+## Arbeit am Wiki
 
+- Fragen aus dem Wiki beantworten, nicht aus dem Gedächtnis: erst
+  `docs/wiki/index.md`, dann in die Seiten. **Der MCP `brain` (ultra-brain) ist
+  der zweite Griff** — erst die Dateien unter `docs/wiki/`, und die Suche nur,
+  wenn dort nichts steht. `brain` indexiert dieses Repo als `project/space`, liest
+  also dieselben Dateien und ist keine zweite Ablage.
+- Antworten mit Substanz werden ein Concept, statt im Chat zu verschwinden.
+- Code implementiert → die betroffenen `Architecture`- und
+  `Game System`-Seiten **im selben Task** nachziehen.
+- Ablage unklar → Concept in `open-questions/` und nachfragen, nicht raten.
+- Widerspruch zu einer bestehenden Seite → beides festhalten, Konflikt
+  markieren, vorlegen. Nie stillschweigend überschreiben.
+- Nie löschen, sondern `status: deprecated`.
+- Geschrieben wird nur die Datei unter `docs/wiki/`. **memexa ist abgeschaltet**
+  und bekommt keine Kopien mehr; ältere Pläne mit einem Kopierschritt werden
+  darin nicht nachgeholt.
 
+## Kommentare
+
+- Andere Abstraktionsebene als die Zeile darunter — höher oder tiefer. Wiederholt
+  ein Kommentar Name und Signatur, entfällt er.
+- Steht die Tatsache im Wiki, steht im Code ein Satz und der Link, nie die
+  Herleitung. Ist sie neu, wird sie erst Wikiseite, dann Zeiger.
+- Keine Historie im Code: kein Task, keine Scheibe, keine Spec-Nummer. Fremde
+  Quellen (Godot, Spec-Zusicherung) bleiben.
+- Wer einen Kommentar kürzt, rechnet seine Aussage vorher nach.

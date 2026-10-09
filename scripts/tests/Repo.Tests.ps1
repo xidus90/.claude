@@ -43,8 +43,7 @@ Describe 'README' {
 Describe 'global CLAUDE.md' {
     It 'requires specs and plans to live in the project repo' {
         $claudeMd = Get-Content (Join-Path $script:RepoRoot 'CLAUDE.md') -Raw
-        $claudeMd | Should -Match 'docs/superpowers/specs'
-        $claudeMd | Should -Match 'docs/superpowers/plans'
+        $claudeMd | Should -Match 'docs/\.superpowers/'
     }
 }
 
