@@ -171,6 +171,8 @@ function New-TeamSettings {
             CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS = '1'
             CLAUDE_CODE_ENABLE_TODO_TOOLS        = '1'
             TEAM_RUN_DIR                         = $runSlash
+            # pytest in a worktree would leave untracked __pycache__ folders that block git worktree remove.
+            PYTHONDONTWRITEBYTECODE              = '1'
         }
         hooks       = [ordered]@{
             TaskCreated   = @(@{ hooks = @(hook 'task-created') })

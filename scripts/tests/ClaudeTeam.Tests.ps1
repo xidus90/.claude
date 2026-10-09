@@ -110,6 +110,7 @@ Describe 'New-TeamSettings' {
         $Settings.env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS | Should -Be '1'
         $Settings.env.CLAUDE_CODE_ENABLE_TODO_TOOLS | Should -Be '1'
         $Settings.env.TEAM_RUN_DIR | Should -Be "$Repo/.team-runs/r1"
+        $Settings.env.PYTHONDONTWRITEBYTECODE | Should -Be '1'
     }
     It 'wires every hook to team-gate with the run and a 30 s timeout' {
         $expect = @{ TaskCreated = 'task-created'; TaskCompleted = 'task-completed'; PostToolUse = 'post-task-update'; PreToolUse = 'pre-tool-use' }

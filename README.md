@@ -172,6 +172,11 @@ startet den Orchestrator als Lead. Push und Merge bleiben beim Menschen.
 - Lauf aufgeben und aufräumen: `claude-team.ps1 -Cleanup <lauf>` (Exit 1,
   wenn etwas übrig bleibt)
 
+Der Starter setzt `PYTHONDONTWRITEBYTECODE=1` für alle Sitzungen des Laufs,
+damit das Tor keine `__pycache__`-Ordner in den Worktrees hinterlässt. Andere
+Caches, die das Tor eines Projekts schreibt, gehören in dessen `.gitignore`;
+sonst verweigert `git worktree remove` ohne `--force` beim Aufräumen.
+
 Die Hooks des Laufs (`scripts/team-gate.py`) prüfen Task-Titel, Urteile und
 Torprotokolle und verweigern Push, Merge, `--no-verify` und Löschen mit Zwang.
 Sie gelten nur in Sitzungen, die der Starter öffnet.
