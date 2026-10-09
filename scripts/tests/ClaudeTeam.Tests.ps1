@@ -139,10 +139,10 @@ Describe 'Get-SettingsPath' {
 }
 
 Describe 'Get-LeadArgument' {
-    It 'starts the orchestrator in-process with the run folder and settings' {
-        $argv = Get-LeadArgument -Run 'C:/r' -Settings 'C:/s.json' -Meta @{ plan = 'p.md'; generation = 2; feature_branch = 'feat/x' }
-        $argv[0..7] -join ' ' | Should -Be '--agent orchestrator --teammate-mode in-process --add-dir C:/r --settings C:/s.json'
-        $argv[8] | Should -Match 'p\.md.*Run folder: C:/r.*Generation: 2.*Feature branch: feat/x.*Verdict rules: .*/docs/agent-team/verdicts\.md'
+    It 'starts the orchestrator in-process with the run folder, settings and session id' {
+        $argv = Get-LeadArgument -Run 'C:/r' -Settings 'C:/s.json' -SessionId 'abc' -Meta @{ plan = 'p.md'; generation = 2; feature_branch = 'feat/x' }
+        $argv[0..9] -join ' ' | Should -Be '--agent orchestrator --teammate-mode in-process --add-dir C:/r --settings C:/s.json --session-id abc'
+        $argv[10] | Should -Match 'p\.md.*Run folder: C:/r.*Generation: 2.*Feature branch: feat/x.*Verdict rules: .*/docs/agent-team/verdicts\.md'
         $argv | Should -Not -Contain '--model'
     }
 }
@@ -240,6 +240,23 @@ Describe 'Invoke-ClaudeTeam' {
         Invoke-ClaudeTeam -Resume 'r1' | Should -Be 0
         (Read-RunJson -Run $run).generation | Should -Be 2
         $Argv[-1] | Should -Match 'Generation: 2'
+    }
+    It 'gives the lead a fresh session id and records it in run.json' {
+        Invoke-ClaudeTeam -Plan 'docs/plan.md' | Should -Be 0
+        $run = @(Get-ChildItem "$Repo/.team-runs" -Directory)[0]
+        $sessions = @((Read-RunJson -Run $run.FullName).sessions)
+        $sessions | Should -HaveCount 1
+        $sessions[0] | Should -Match '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        $Argv[[array]::IndexOf($Argv, '--session-id') + 1] | Should -Be $sessions[0]
+    }
+    It 'appends the session of each resumed generation' {
+        $run = New-TeamRun -Repo $Repo -Plan 'docs/plan.md' -Name 'r1'
+        Invoke-ClaudeTeam -Resume 'r1' | Should -Be 0
+        Invoke-ClaudeTeam -Resume 'r1' | Should -Be 0
+        $sessions = @((Read-RunJson -Run $run).sessions)
+        $sessions | Should -HaveCount 2
+        $sessions[0] | Should -Not -Be $sessions[1]
+        $Argv[[array]::IndexOf($Argv, '--session-id') + 1] | Should -Be $sessions[1]
     }
     It 'deletes the settings once the lead has cleaned the run away' {
         Remove-Item (Join-Path $TestDrive 'settings') -Recurse -Force -ErrorAction SilentlyContinue

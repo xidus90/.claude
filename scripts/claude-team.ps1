@@ -191,12 +191,14 @@ function Get-LeadArgument {
     param(
         [Parameter(Mandatory)][string]$Run,
         [Parameter(Mandatory)][string]$Settings,
-        [Parameter(Mandatory)]$Meta
+        [Parameter(Mandatory)]$Meta,
+        [Parameter(Mandatory)][string]$SessionId
     )
     $prompt = "Run the agent-team plan $($Meta.plan). Run folder: $($Run -replace '\\', '/'). " +
         "Generation: $($Meta.generation). Feature branch: $($Meta.feature_branch). " +
         "Verdict rules: $($script:VerdictRules). Follow your orchestrator instructions."
-    return @('--agent', 'orchestrator', '--teammate-mode', 'in-process', '--add-dir', $Run, '--settings', $Settings, $prompt)
+    return @('--agent', 'orchestrator', '--teammate-mode', 'in-process', '--add-dir', $Run, '--settings', $Settings,
+        '--session-id', $SessionId, $prompt)
 }
 
 function Invoke-ClaudeProcess {
@@ -319,8 +321,12 @@ function Invoke-ClaudeTeam {
         $run = New-TeamRun -Repo $repo -Plan $Plan -Name $name
         $meta = Read-RunJson -Run $run
     }
+    # The agent panel reads every generation's transcript; the run names them in order.
+    $sessionId = [guid]::NewGuid().ToString()
+    $meta.sessions = [string[]]@(@($meta['sessions']) | Where-Object { $_ }) + $sessionId
+    Write-RunJson -Run $run -Meta $meta
     $settings = New-TeamSettings -Repo $repo -Run $run -Name $name
-    $code = Invoke-WithoutEffortOverride -ArgumentList (Get-LeadArgument -Run $run -Settings $settings -Meta $meta)
+    $code = Invoke-WithoutEffortOverride -ArgumentList (Get-LeadArgument -Run $run -Settings $settings -Meta $meta -SessionId $sessionId)
     Remove-ClosedSettings -Settings $settings -Run $run
     return $code
 }
