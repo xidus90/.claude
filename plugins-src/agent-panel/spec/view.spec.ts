@@ -164,6 +164,7 @@ test('reads the reported cost', () => {
   assert.equal(reportedCost({ other: 1 }), null)
   assert.equal(reportedCost(undefined), null)
   assert.equal(reportedCost(Number.NaN), null)
+  assert.equal(reportedCost({ usd: Number.NaN }), null)
 })
 
 test('builds the script call', () => {

@@ -195,7 +195,7 @@ export function reportedCost(cost: unknown): number | null {
   const record = cost as Record<string, unknown>
   for (const field of COST_FIELDS) {
     const value = record[field]
-    if (typeof value === 'number') return value
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null
   }
   return null
 }
