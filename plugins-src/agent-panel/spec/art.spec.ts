@@ -34,10 +34,23 @@ test('draws the status bar in the status colours, skipping empty statuses', () =
   assert.equal((statusSvg(LIGHT, { running: 0, done: 0, failed: 0, aborted: 0 }).match(/<rect/g) ?? []).length, 2)
 })
 
+// Width of the cost bar's fill rect, or null when only the track is drawn.
+const costFill = (svg: string): string | null => /<rect x="0" y="0" width="([^"]+)" height="5" fill="#8f8cf4"\/>/.exec(svg)?.[1] ?? null
+
 test('draws the cost bar as a share of the track, clamped to 0..1', () => {
-  assert.match(costBarSvg(LIGHT, 0.25), /width="80"/)
-  assert.match(costBarSvg(LIGHT, 2), /width="320"/)
+  assert.equal(costFill(costBarSvg(LIGHT, 0.25)), '80')
+  assert.equal(costFill(costBarSvg(LIGHT, 2)), '320')
+  assert.equal(costFill(costBarSvg(LIGHT, 0)), null)
+  assert.equal(costFill(costBarSvg(LIGHT, -1)), null)
   assert.equal((costBarSvg(LIGHT, 0).match(/<rect/g) ?? []).length, 2)
+})
+
+test('draws only the track for a cost share that is not a finite number', () => {
+  for (const share of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const svg = costBarSvg(LIGHT, share)
+    assert.equal(costFill(svg), null, String(share))
+    assert.ok(!svg.includes('NaN') && !svg.includes('Infinity'), String(share))
+  }
 })
 
 test('animates a running crab only, and honours reduced motion', () => {

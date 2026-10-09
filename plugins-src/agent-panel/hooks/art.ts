@@ -67,7 +67,7 @@ export function statusSvg(p: Palette, c: StatusCounts): string {
 }
 
 export function costBarSvg(p: Palette, share: number): string {
-  const s = Math.min(1, Math.max(0, share))
+  const s = Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 0
   return doc(SVG_W, 5, segments([{ share: s, color: COST_COLOR }], 5, p.track))
 }
 
