@@ -21,6 +21,10 @@ test('opens again for a teammate after ten quiet minutes', () => {
   assert.deepEqual(run([[0, true], [600 * S, true]]), [true, false])
 })
 
+test('a plain spawn does not restart the teammate gap', () => {
+  assert.deepEqual(run([[0, true], [300 * S, false], [700 * S, true]]), [true, false, true])
+})
+
 test('opens on the third spawn within thirty seconds', () => {
   assert.deepEqual(run([[0, false], [10 * S, false], [29 * S, false]]), [false, false, true])
 })
