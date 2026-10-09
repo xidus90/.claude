@@ -20,7 +20,7 @@ spawn prompt names the run folder, the generation, your task
    because of it. Run it and keep the failing output.
 3. Commit your repro tests in your worktree (it has no branch; the commit
    stays loose). For finding k export its patch:
-   `git -C <worktree> diff <feature> HEAD -- <its test files> > "$TEAM_RUN_DIR/evidence/R<r>-P<n>-F<k>.patch"`.
+   `git -C <worktree> diff <feature> HEAD -- <its test files> > "$TEAM_RUN_DIR/evidence/g<gen>-R<r>-P<n>-F<k>.patch"`.
 4. Read the verdict rules (`verdicts.md`, path in your spawn prompt) and
    write your verdict: finding ids `R<r>-P<n>-F<k>`, each
    `status: "open"` with its `patch`. No findings is a valid hunt.

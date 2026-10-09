@@ -415,6 +415,16 @@ def check_judges(run: Run, title: Title, v: JsonObj, done: list[Task]) -> list[s
     return []
 
 
+def gate_exit(log: Path, head: str) -> int | None:
+    """The exit code a gate log records for head; None when the log is missing or malformed."""
+    if not log.is_file():
+        return None
+    lines = log.read_text(encoding="utf-8").splitlines()
+    if len(lines) < 2 or lines[0].strip() != head or not re.match(r"^-?[0-9]+$", lines[1].strip()):
+        return None
+    return int(lines[1])
+
+
 def check_gate_log(run: Run, title: Title, v: JsonObj) -> list[str]:
     root = str(title.root)
     worktree_head = head_of(run.worktree(root))
@@ -423,10 +433,10 @@ def check_gate_log(run: Run, title: Title, v: JsonObj) -> list[str]:
     log = run.dir / "evidence" / f"gate-{root}-{worktree_head}.txt"
     if not log.is_file():
         return [f"gate log missing: {log}"]
-    lines = log.read_text(encoding="utf-8").splitlines()
-    if len(lines) < 2 or lines[0].strip() != worktree_head or not re.match(r"^-?[0-9]+$", lines[1].strip()):
+    code = gate_exit(log, worktree_head)
+    if code is None:
         return ["gate log must start with the HEAD hash and the exit code"]
-    if int(lines[1]) == 0:
+    if code == 0:
         return []
     if v.get("verdict") == "pass":
         return ["the gate log is red, the verdict cannot be pass"]
@@ -553,8 +563,15 @@ def check_merge(run: Run, root: str, done: list[Task]) -> list[str]:
     head = git(run.repo, "rev-parse", branch).stdout.strip()
     if not is_green(run, done, root, head):
         return [f"root {root} is not green for {head}"]
+    # A failed verify:rebase sends the root back through the reviews only, so its green gate log
+    # counts; a failed verify:impl/fix confirmed a defect and does not.
     gates = judged(run, done, root, {"verify"}, {"impl", "fix", "rebase"})
-    if not gates or gates[-1].verdict.get("verdict") != "pass" or gates[-1].verdict.get("head") != head:
+    if not any(
+        g.verdict.get("head") == head
+        and (g.verdict.get("verdict") == "pass" or g.task.title.sub == "rebase")
+        and gate_exit(run.dir / "evidence" / f"gate-{root}-{head}.txt", head) == 0
+        for g in gates
+    ):
         return [f"root {root} has no passing gate run for {head}"]
     return []
 

@@ -477,7 +477,7 @@ Umgebungsvariable.
 | `TaskCompleted`, `impl`/`fix` | … `git status --porcelain` im Worktree nicht leer ist oder HEAD gleich `base_head` ist | Register `completed` |
 | `TaskCompleted`, `verify:impl`/`verify:fix`/`verify:rebase` | … das Urteil fehlt oder den Regeln widerspricht, das Torprotokoll fehlt oder nicht zum HEAD passt, oder das Protokoll rot ist und das Urteil `pass` sagt. Ein rotes Protokoll bei `fail` ist richtig, wenn ein `claim` „Tor grün“ `refuted` ist und das Protokoll als `evidence` trägt | Register `completed` |
 | `TaskCompleted`, übrige `review`/`verify`/`hunt` | … das Urteil fehlt oder den Regeln widerspricht | Register `completed` |
-| `TaskCompleted`, `merge` | … der Zweig der Wurzel kein Vorfahre des Feature-Zweigs ist, oder die Wurzel für den eingeholten HEAD nicht grün ist (Abschnitt 4; ein `verify:rebase` mit `pass` und passendem `inherits` ersetzt das Trio) | Register `completed` |
+| `TaskCompleted`, `merge` | … der Zweig der Wurzel kein Vorfahre des Feature-Zweigs ist, oder die Wurzel für den eingeholten HEAD nicht grün ist (Abschnitt 4; ein `verify:rebase` mit `pass` und passendem `inherits` ersetzt das Trio), oder für den eingeholten HEAD kein grünes Torprotokoll aus einem abgeschlossenen `verify:impl`/`verify:fix` mit `pass` oder einem abgeschlossenen `verify:rebase` vorliegt | Register `completed` |
 | `TaskCompleted`, `final` | … ein anderer Task offen ist (siehe unten), eine Wurzel kein abgeschlossenes `[merge]` hat, ihr Zweig kein Vorfahre des Feature-Zweigs ist, oder das jüngste `verify`-Urteil einer Wurzel `fail` ist | Register `completed` |
 | `TaskCompleted`, `cleanup` | … das jüngste `[verify:final]` nicht `pass` ist, ein Worktree des Laufs noch eingetragen ist, ein Zweig `team/<lauf>/*` steht, der nicht in der Liste der Task-Beschreibung steht, oder der Laufordner noch existiert. Hier gibt es weder Sperre noch Register noch `status.md`: der Hook prüft nur | — |
 | `PostToolUse` auf `TaskUpdate` | — | löscht der Aufruf einen Task, Register `deleted` |
@@ -650,7 +650,10 @@ bleibt (Entscheidung 2 in Abschnitt 14). Folgen für dieses Design:
      HEAD und `git range-diff <feature_alt>..<alter_head> <feature>..<neuer_head>`.
      Sind die eigenen Commits unverändert, übernimmt sein Urteil das Trio
      (`rebased_from`, `inherits`); zurück zu Schritt 1. Sonst laufen beide
-     Reviews und `verify:review` neu.
+     Reviews und `verify:review` neu. Das Torprotokoll des gescheiterten
+     `verify:rebase` zählt dann für das Einholen, wenn es grün ist; ist es
+     rot, geht die Wurzel in die Fix-Schleife (`[fix] W`, `verify:fix`,
+     beide Reviews, `verify:review`).
    - **Anderer Fehler** (kein Konfliktstatus): kein Fix, sondern Eskalation
      an den Menschen.
 

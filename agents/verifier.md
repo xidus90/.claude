@@ -40,12 +40,18 @@ writing a verdict. Your task title says what to judge:
   the claim "own commits unchanged" or "gate is green".
 - `[verify:hunt] B<n>`: apply the hunter's patch in a scratch copy, run the
   repro test, and decide whether it shows a real defect. A finding that
-  repeats a known bug gets `duplicate_of`.
+  repeats a known bug gets `duplicate_of`. The scratch copy is
+  `git worktree add --detach "$TEAM_RUN_DIR/worktrees/scratch-B<n>" <feature branch>`;
+  remove it afterwards with
+  `git worktree remove "$TEAM_RUN_DIR/worktrees/scratch-B<n>"` (no `--force`,
+  no `rm -r`).
 - `[verify:final] F`: the report and the plan checkboxes against the register,
   the verdicts and the feature branch; run the gate on the feature branch.
 
 The gate log lives at `$TEAM_RUN_DIR/evidence/gate-<root>-<head>.txt`: line 1
-the full HEAD hash, line 2 the exit code, then the output.
+the full HEAD hash, line 2 the exit code, then the output. Write it and the
+verdict as UTF-8 without BOM; in PowerShell use
+`[IO.File]::WriteAllText(<path>, <text>)` or `Set-Content -Encoding utf8NoBOM`.
 
 Leave every worktree as you found it: `git status --porcelain` is empty before
 you end your turn. Delete only files your own runs created and git lists as

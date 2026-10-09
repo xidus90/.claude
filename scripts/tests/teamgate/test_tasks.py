@@ -466,6 +466,42 @@ def test_a_failing_rebase_verdict_ends_green(world: World) -> None:
     assert "is not green" in world.completed("m", "[merge] T1")[0]
 
 
+def reviewed_after_failed_rebase(w: World, code: int) -> str:
+    wt, head = build(w)
+    reviewed(w, "T1", head)
+    w.commit(w.repo, "other.txt")
+    sh(wt, "rebase", "-q", FEATURE)
+    new = sh(wt, "rev-parse", "HEAD")
+    w.created("vrb", "[verify:rebase] T1")
+    log = w.gate_log("T1", new, code)
+    rd = {"command": "git range-diff", "output_file": w.evidence("rd.txt")}
+    findings = [settled(w, "T1-ver-F1", "claim", "refuted")]
+    if code:
+        findings.append(finding("T1-ver-F2", "claim", "refuted", evidence={"command": "gate", "output_file": log}))
+    verify(w, "vrb", "[verify:rebase] T1", new, "fail", findings, rebased_from=head, evidence=rd)
+    assert w.completed("vrb", "[verify:rebase] T1") == []
+    reviewed(w, "T1", new, tag="2")
+    w.created("m", "[merge] T1")
+    sh(w.repo, "merge", "-q", "--ff-only", w.run.branch("T1"))
+    return new
+
+
+def test_a_failed_rebase_with_a_green_gate_log_merges_after_new_reviews(world: World) -> None:
+    reviewed_after_failed_rebase(world, 0)
+    assert world.completed("m", "[merge] T1") == []
+
+
+def test_a_failed_rebase_with_a_red_gate_log_does_not_merge(world: World) -> None:
+    new = reviewed_after_failed_rebase(world, 1)
+    assert world.completed("m", "[merge] T1") == [f"root T1 has no passing gate run for {new}"]
+
+
+def test_a_gate_log_removed_after_the_rebase_check_does_not_merge(world: World) -> None:
+    new = reviewed_after_failed_rebase(world, 0)
+    (world.run.dir / "evidence" / f"gate-T1-{new}.txt").unlink()
+    assert world.completed("m", "[merge] T1") == [f"root T1 has no passing gate run for {new}"]
+
+
 def test_a_verdict_rewritten_after_completion_does_not_stay_green(world: World) -> None:
     wt, head = build(world)
     reviewed(world, "T1", head)

@@ -270,6 +270,8 @@ ALLOW_BASH = [
     "git branch -u origin/x",
     'git worktree remove "{wt}"',
     'git worktree remove "$TEAM_RUN_DIR/worktrees/T1"',
+    'git worktree add --detach "$TEAM_RUN_DIR/worktrees/scratch-B1" feat/x',  # the verifier's scratch copy
+    'git worktree remove "$TEAM_RUN_DIR/worktrees/scratch-B1"',
     "git worktree list",
     "git clean -n",
     "git clean -f",

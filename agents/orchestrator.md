@@ -38,6 +38,9 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
 - **Green**: the latest `verify:review` of W passes, names both reviews of
   this round, and all three carry the HEAD of `team/<run>/W` — or the latest
   passing `verify:rebase` carries that HEAD and inherits such a trio.
+- **Mergeable**: green, and a green gate log for that HEAD exists from a
+  passing `verify:impl` or `verify:fix`, or from a `verify:rebase` (pass or
+  fail).
 
 ## Spawning teammates
 
@@ -79,14 +82,16 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
    - Point `[merge] W`'s blockedBy at the newest `[verify:review] W` each round.
    - A round is every `[impl]` and every `[fix]` without `:conflict`. Before a
      fourth round of the same root, ask the human with AskUserQuestion.
-4. **Merge W** (only you, only when W is green for the HEAD of its branch):
+4. **Merge W** (only you, only when W is mergeable for the HEAD of its branch):
    - If the feature branch is an ancestor of that HEAD:
      `git merge --ff-only team/<run>/W` in the main tree. Done.
    - Otherwise `git -C <worktree> rebase <feature>`.
      Conflict → `git -C <worktree> rebase --abort`, then
      `[fix:<domain>:conflict] W` and the chain from verify:fix on.
      No conflict → `[verify:rebase] W`; if it passes with `inherits`, go back
-     to the merge check; if it fails, run both reviews and verify:review again.
+     to the merge check; if it fails with a green gate log, run both reviews
+     and verify:review again; if its gate log is red, `[fix:<domain>] W` and
+     the chain from verify:fix on.
      Any other rebase error → ask the human.
    - Then complete `[merge] W`. A dependent task's worktree is created only now.
 5. **Hunt**, once every `[merge] T<n>` is complete. Round r: split the feature

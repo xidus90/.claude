@@ -14,6 +14,9 @@ the refusal tells you which rule.
 - Gate log (verifier, `verify:impl`, `verify:fix`, `verify:rebase` only):
   `$TEAM_RUN_DIR/evidence/gate-<root>-<head>.txt`. Line 1 the full HEAD hash,
   line 2 the exit code of the gate command, then its output.
+- Encoding: verdict files and gate logs are UTF-8 without BOM; a BOM breaks
+  the JSON parse and the line-1 hash check. In PowerShell write them with
+  `[IO.File]::WriteAllText(<path>, <text>)` or `Set-Content -Encoding utf8NoBOM`.
 
 ## Shape
 
@@ -51,7 +54,7 @@ the refusal tells you which rule.
   `medium`, `high` or `critical`.
 - **Reviews** (`review:code`, `review:security`) and **hunts** carry no
   `verdict`. Every finding has `status: "open"`. A hunt finding also carries
-  `"patch": "evidence/R<r>-P<n>-F<k>.patch"`, the red repro test.
+  `"patch": "evidence/g<gen>-R<r>-P<n>-F<k>.patch"`, the red repro test.
 - **Verify** verdicts carry `verdict`: `fail` exactly when a `defect` is
   `confirmed` or a `claim` is `refuted`, otherwise `pass`. Every finding is
   `confirmed` or `refuted`, each with `evidence` (`command` plus an
@@ -66,6 +69,12 @@ the refusal tells you which rule.
   of the trio that was green before (review:code, review:security,
   verify:review). When the commits changed, it refutes the claim "own commits
   unchanged" and fails; then the reviews run again.
+- `[merge] W` completes only when, besides being green, the merged HEAD has a
+  green gate log from a passing `verify:impl` or `verify:fix`, or from a
+  `verify:rebase` with either verdict. A failed `verify:rebase` with a green
+  gate log therefore needs only the reviews and `verify:review` again; with a
+  red gate log the root goes through `[fix] W`, `verify:fix`, the reviews and
+  `verify:review`.
 - `verify:hunt` may add `"duplicate_of": "B<n>"` to a finding that repeats a
   known bug.
 - A red gate log never goes with `pass`. With `fail` it is right when a claim
