@@ -260,9 +260,11 @@ der Name auf keine Form, steht er unverändert da.
   `view.ts`; das Kit prüft nur, dass jede Verdrahtung einmal feuert.
 - **Typen:** `tsc --noEmit --strict`; Dev-Abhängigkeiten nur `typescript` und
   `@types/node` (für `cli/`).
-  Die Mod-Typen schreibt Claude Code beim Laden mit `--plugin-dir` nach
-  `.claude-plugin/types/`; sie werden eingecheckt, damit `tsc` ohne Sitzung
-  läuft. Kein `any`. Node entfernt Typen nur, statt zu übersetzen: Die
+  Die Mod-Typen in `.claude-plugin/types/` schreibt Claude Code nur, wenn eine
+  interaktive Sitzung das Plugin mit `claude --plugin-dir` lädt (nicht
+  `claude -p`); sie bringen ihre eigene `.gitignore` mit und werden nicht
+  eingecheckt. `npm run typecheck` braucht daher vorher ein solches Laden.
+  Kein `any`. Node entfernt Typen nur, statt zu übersetzen: Die
   `tsconfig` setzt `erasableSyntaxOnly`, also keine `enum`, keine
   Parameter-Properties, keine Namespaces.
 - **Fixtures:** gekürzte echte Transkripte und `meta.json` aus dem e2e-Lauf,
