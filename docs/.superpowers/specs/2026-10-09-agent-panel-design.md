@@ -17,7 +17,8 @@ Was der Nutzer festgelegt hat:
 - **Umfang:** Team-Läufe mit Rollen-/Task-Gliederung; normale Sitzungen mit
   ihren Subagenten als flache Liste.
 - **Kosten:** Tokens × eigene Preistabelle (API-Gegenwert), nach Token-Art
-  getrennt, inklusive Cache-Write 5m/1h.
+  getrennt, inklusive Cache-Write 5m/1h; dazu als Abgleich der Wert, den
+  Claude Code selbst für die laufende Sitzung meldet (Abschnitt 5).
 - **Zeitraum:** die laufende Sitzung, und zwar einschließlich allem vor einer
   Unterbrechung: `claude --resume`/`--continue` derselben Sitzung **und** alle
   Generationen eines Team-Laufs nach `claude-team.ps1 -Resume`.
@@ -44,23 +45,31 @@ Gelesen und gemessen am 2026-10-09.
    `$.clock.every(ms, …)` oder reaktiven `$.state`. Docs:
    `code.claude.com/docs/en/plugins/mods/`, Typen: `mods/types/claude-code.d.ts`.
 2. **Live-Status.** `$.agent.list()` liefert Subagenten und Teammates der
-   Sitzung mit `pending|running|waiting|idle|completed|failed|killed`.
-3. **Keine Dollarbeträge.** Weder Hooks noch Transkripte enthalten Kosten je
+   Sitzung als `AgentInfo` mit `id`, `name`, `status`
+   (`pending|running|waiting|idle|completed|failed|killed`). `id` ist laut
+   `claude-code.d.ts` dieselbe Zeichenkette wie `agentId` in den
+   `tool.call`-Ereignissen; in den Transkripten steht sie als `agentId` in
+   jeder Zeile und als Stamm des Dateinamens (`agent-<id>.jsonl`).
+   `$.session.usage()` liefert `cost` der laufenden Sitzung,
+   `$.command.register` legt einen Slash-Befehl an.
+3. **`claude --session-id <uuid>`** existiert und legt das Transkript unter
+   `projects/<proj>/<uuid>.jsonl` ab (Probelauf am 2026-10-09).
+4. **Keine Dollarbeträge.** Weder Hooks noch Transkripte enthalten Kosten je
    Agent, nur `usage` je Assistant-Nachricht.
-4. **Ablage auf der Platte.** Lead: `~/.claude/projects/<proj>/<session>.jsonl`.
+5. **Ablage auf der Platte.** Lead: `~/.claude/projects/<proj>/<session>.jsonl`.
    Agents: `~/.claude/projects/<proj>/<session>/subagents/agent-<id>.jsonl`
    und daneben `agent-<id>.meta.json` mit `name`, `agentType`,
    `customAgentType` (die Rolle aus `agents/`), `model`, `taskKind`
    (`in_process_teammate` u. a.), `teamName`. Teammates eines Team-Laufs liegen
    unter der Sitzung des Leads. `<proj>` ist das kodierte cwd und weicht bei
    Worktrees und Temp-Pfaden ab; gesucht wird deshalb über die Session-ID.
-5. **Mehrere Zeilen je Antwort (gemessen).** Eine Antwort steht als mehrere
+6. **Mehrere Zeilen je Antwort (gemessen).** Eine Antwort steht als mehrere
    Zeilen mit derselben `message.id` im Transkript. Im e2e-Lauf vom
    2026-10-09: Lead 469 Zeilen auf 276 IDs, alle Wiederholungen mit gleicher
    `usage`; Teammates (`fix-B1`: 50 auf 31, `impl-T1`: 85 auf 46) mit gleichen
    Input- und Cache-Werten, aber wachsendem `output_tokens` (etwa 5 → 234).
    Die letzte Zeile einer ID trägt den Endstand.
-6. **Vorbild.** savvy-progress 1.2.0 zählt live über `agent.spawn`,
+7. **Vorbild.** savvy-progress 1.2.0 zählt live über `agent.spawn`,
    `turn.step`, `turn.complete` im Speicher. Es kennt weder Resume noch
    Generationen noch Rollen, und sein Preis-Fallback für unbekannte Modelle
    ist still.
@@ -89,7 +98,7 @@ lokalen Marketplace in `settings.json` (`extraKnownMarketplaces`,
 | `price.ts` | Preistabelle je Modell (Input, Output, Cache-Read, Cache-Write 5m, Cache-Write 1h) → USD. | — |
 | `classify.ts` | Rolle aus `customAgentType`, sonst `agentType`; Task-Art und Wurzel aus dem Namen. | — |
 | `model.ts` | Anzeige bauen: Kopf, Gruppen, Zeilen; Live-Status einmischen. | die vier oben |
-| `register.ts` | Verdrahtung: Panel öffnen, Neuzeichnen per `$.clock.every(2000)` und bei `agent.spawn`/`turn.complete`, `ui.render`. UI über Funktionsaufrufe, kein JSX. | `model.ts` |
+| `register.ts` | Verdrahtung: Panel beim ersten `agent.spawn` öffnen; Slash-Befehl `/agent-panel` schaltet es an und aus (im Terminal öffnet sich das Dock von selbst erst ab 144 Spalten, von Hand ab 110); Neuzeichnen per `$.clock.every(2000)` und bei `agent.spawn`/`turn.complete`, `ui.render`. UI über Funktionsaufrufe, kein JSX. | `model.ts` |
 
 **Änderung am Agent-Team:** `claude-team.ps1` erzeugt die Session-ID des Leads
 selbst, startet ihn mit `claude --session-id <uuid>` und hängt sie in
@@ -125,7 +134,7 @@ Agents · Lauf 20261009-113117 (Gen 1–2)
 ### Größen
 
 - **Zählung je Antwort:** je `message.id` zählt nur die letzte Zeile
-  (Abschnitt 2, Punkt 5). Zeilen ohne `message.id` zählen einzeln.
+  (Abschnitt 2, Punkt 6). Zeilen ohne `message.id` zählen einzeln.
 - **Tokens** = Input + Output + Cache-Write + Cache-Read. Die Aufschlüsselung
   steht im Detail (Desktop: Tooltip, Terminal: ausgeklappte Zeile).
 - **Kosten** = Σ Token-Art × Preis des Modells der jeweiligen Nachricht.
@@ -143,8 +152,21 @@ Agents · Lauf 20261009-113117 (Gen 1–2)
 | ✗ | gescheitert | `failed`, `killed` | letzte Nachricht ist ein API-Fehler |
 | ⊘ | abgebrochen | — | weder Antwort noch Fehler am Ende (Lead starb) |
 
-Ein Agent, den `$.agent.list()` nicht kennt (frühere Generation), bekommt den
-Status aus dem Transkript.
+**Zuordnung:** Ein Eintrag aus `$.agent.list()` gehört zu der Datei, deren
+`agentId` (Stamm des Dateinamens) gleich seiner `id` ist. Ein Agent, den
+`$.agent.list()` nicht kennt — aus einer früheren Generation oder aus
+derselben Sitzung vor einem `--resume`, denn beide sind nach dem Neustart
+nicht mehr im Speicher —, bekommt den Status aus dem Transkript.
+
+### Abgleich mit dem gemeldeten Wert
+
+Die Lead-Zeile der laufenden Generation zeigt neben dem errechneten Betrag den
+Wert aus `$.session.usage().cost`. Weichen beide um mehr als 10 % ab, steht
+dort „⚠ Preistabelle prüfen“. Verglichen wird der Wert mit dem Umfang, den
+Claude Code tatsächlich meldet: Die erste Aufgabe des Plans misst, ob `cost`
+die Agents der Sitzung einschließt. Schließt er sie ein, ist die
+Vergleichsgröße die errechnete Summe der laufenden Sitzung (Lead + ihre
+Agents); sonst nur der Lead der laufenden Generation.
 
 ### Klassifizierung
 
@@ -179,7 +201,10 @@ der Name auf keine Form, steht er unverändert da.
   --experimental-test-coverage --test-coverage-lines=100
   --test-coverage-branches=100 --test-coverage-functions=100`. Typprüfung mit
   `tsc --noEmit --strict`; einzige Dev-Abhängigkeit `typescript`, die
-  Mod-Typen liegen als `claude-code.d.ts` im Plugin. Kein `any`.
+  Mod-Typen liegen als `claude-code.d.ts` im Plugin. Kein `any`. Node entfernt
+  Typen nur, statt zu übersetzen: Die `tsconfig` setzt
+  `erasableSyntaxOnly`, also keine `enum`, keine Parameter-Properties, keine
+  Namespaces.
 - **Fixtures:** gekürzte echte Transkripte und `meta.json` aus dem e2e-Lauf,
   bereinigt, unter `test/fixtures/`. Fälle: mehrere Zeilen je `message.id` mit
   wachsendem Output, Antwort über die Lesegrenze, halbe letzte Zeile, kaputte
@@ -189,8 +214,9 @@ der Name auf keine Form, steht er unverändert da.
   `classify` (jede Titelform der Team-Spec, unbekannter Name), `scan` (Lauf
   mit zwei Generationen, `run.json` ohne `sessions`, fremde Sitzung, Sitzung
   in anderem Projektordner), `model` (Wanduhr bei parallelen Agents,
-  Sortierung, Lead-Gruppe, flache Liste), `register` mit gefälschtem `$`
-  (Panel öffnet, Neuzeichnen bei Ereignis, Fehler wird Zeile).
+  Sortierung, Lead-Gruppe, flache Liste, Zuordnung über `id`, Abgleich unter
+  und über 10 %), `register` mit gefälschtem `$` (Panel öffnet,
+  `/agent-panel` schaltet um, Neuzeichnen bei Ereignis, Fehler wird Zeile).
 - **Starter:** Pester-Test unter `scripts/tests/`: `--session-id` steht in der
   Befehlszeile, `sessions` wächst bei `-Resume`.
 - **Rauchtest von Hand** mit Protokoll unter `docs/.superpowers/`: ein echter
