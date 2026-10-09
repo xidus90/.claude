@@ -1,15 +1,52 @@
 {
+  "env": {
+    "CLAUDE_CODE_PLUGIN_DIRS": "C:/Users/micro/.claude/mods/session-meter",
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
   "permissions": {
     "defaultMode": "auto"
   },
-  "model": "opus[1m]",
+  "model": "opus",
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -S \"C:/Users/micro/.claude/scripts/no-discard-commit.py\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -S \"C:/Users/micro/.claude/scripts/no-backslash-heredoc.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
           {
             "type": "command",
             "command": "pwsh -NoProfile -Command \"& (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.claude/scripts/write-cc-version.ps1')\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "learnings-reminder.exe",
+            "timeout": 10
           }
         ]
       }
@@ -25,25 +62,132 @@
     "mcp-server-dev@claude-plugins-official": false,
     "code-review@claude-plugins-official": true,
     "security-guidance@claude-plugins-official": true,
-    "browser-use@browser-use": true
+    "browser-use@browser-use": false,
+    "antigravity@antigravity-for-claude-code": true,
+    "gopls-lsp@claude-plugins-official": true,
+    "telemetry@builtin": false,
+    "ponytail@ponytail": true,
+    "savvy-progress@claude-kit": true,
+    "savvy-flow@claude-kit": false
   },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {
       "source": {
         "source": "github",
         "repo": "anthropics/claude-plugins-official"
-      }
+      },
+      "autoUpdate": true
     },
     "browser-use": {
       "source": {
         "source": "git",
         "url": "https://github.com/browser-use/plugins.git"
+      },
+      "autoUpdate": true
+    },
+    "antigravity-for-claude-code": {
+      "source": {
+        "source": "github",
+        "repo": "yuting0624/antigravity-for-claude-code"
+      },
+      "autoUpdate": true
+    },
+    "ponytail": {
+      "source": {
+        "source": "github",
+        "repo": "DietrichGebert/ponytail"
+      }
+    },
+    "claude-kit": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/johnnyvizz/claude-kit.git"
       }
     }
   },
+  "outputStyle": "Concise",
+  "language": "Deutsch",
   "effortLevel": "low",
+  "modelSettings": {
+    "claude-opus-5": {
+      "effortLevel": "medium"
+    },
+    "claude-opus-5-5": {
+      "effortLevel": "medium"
+    },
+    "claude-sonnet-5-5": {
+      "effortLevel": "low"
+    }
+  },
+  "advisorModel": "fable",
+  "dialogExpiry": "60s",
+  "pluginConfigs": {
+    "agents-md@builtin": {
+      "options": {
+        "instructionFiles": "claude-md-or-agents-md"
+      }
+    }
+  },
   "autoUpdatesChannel": "latest",
   "tui": "fullscreen",
+  "voice": {
+    "enabled": true,
+    "mode": "hold"
+  },
   "autoDreamEnabled": true,
-  "skipAutoPermissionPrompt": true
+  "skipWorkflowUsageWarning": true,
+  "editorMode": "normal",
+  "switchModelsOnFlag": false,
+  "teammateMode": "tmux",
+  "remoteControlAtStartup": true,
+  "inputNeededNotifEnabled": true,
+  "agentPushNotifEnabled": true,
+  "skipAutoPermissionPrompt": true,
+  "autoMode": {
+    "soft_deny": [
+      "$defaults",
+      "Bash(git push --force:*) in xidus90/loomux — protected/ruleset-covered master, force-push risk",
+      "Bash(gh pr merge:*) in xidus90/loomux — merge without review bypass risk"
+    ],
+    "environment": [
+      "### Org-wide",
+      "**Organization**: None configured",
+      "**Cloud provider(s)**: None configured",
+      "**Repository visibility**: not queryable here — assume private (default posture), but note the remote (github.com/xidus90/kontari) is not confirmed private or public",
+      "**Internal sharing / snippet hosting**: None configured — treat public paste/gist services as outside the trust boundary",
+      "**Secrets management**: None configured",
+      "**Default / protected branches**: Default branch: main; protected-branch status not queryable here",
+      "**CI/CD deploy targets**: None configured",
+      "**Network posture**: None configured",
+      "**Source control**: The trusted repo (github.com/xidus90/kontari) and its remote only — no additional orgs configured",
+      "**Trusted internal domains**: None configured",
+      "**Trusted cloud buckets**: None configured",
+      "**Key internal services**: None configured",
+      "**Internal package registry**: None configured",
+      "**Sensitive data locations & audiences**: any file or store holding personal data, confidential business data, credentials, regulated data, or similarly sensitive material; preserve exact handles when known and share only with audiences cleared at the [named+specifics] bar; note wiki/design/ownership/terraforming.md flagged by filename scan as sensitive-looking (design doc, review before wider sharing)",
+      "**Data retention / declassification**: None configured",
+      "**Sensitive remote targets**: any namespace, host, or container whose name carries prod or production as a whole word or name segment",
+      "**Protected deployment namespaces / environments**: None configured — fall back to the Sensitive remote targets heuristic; note k8s namespace 'reports' seen once in this project's transcripts, not treated as protected without corroboration",
+      "**Protected IaC scopes**: IAM, RBAC, networking, quota, and node-pool resources; anything whose name or tag carries prod or production as a whole word or name segment",
+      "**Repository visibility**: PUBLIC — github.com/xidus90/loomux (confirmed via gh)",
+      "**Secrets management**: None configured (CI references deploy-key secret names RELEASE_APP_CLIENT_ID, RELEASE_APP_PRIVATE_KEY in xidus90/loomux workflows; values not seen)",
+      "**Default / protected branches**: Default branch `master`; branch protection on `master` (classic) plus active rulesets `master` and `release tags` in xidus90/loomux",
+      "**Host containment**: None configured — assume Claude Code runs on an ordinary developer machine with open internet",
+      "**Source control**: xidus90/loomux (github.com) and its remote `origin` only — no additional orgs configured",
+      "**Sensitive data locations & audiences**: any file or store holding personal data, confidential business data, credentials, regulated data, or similarly sensitive material; preserve exact handles when known and share only with audiences cleared at the [named+specifics] bar",
+      "**Sensitive remote targets**: any namespace, host, or container whose name carries `prod` or `production` as a whole word or name segment",
+      "**Protected deployment namespaces / environments**: None configured — fall back to the Sensitive remote targets heuristic",
+      "**Protected IaC scopes**: IAM, RBAC, networking, quota, and node-pool resources; anything whose name or tag carries `prod` or `production` as a whole word or name segment",
+      "### User-specific",
+      "**Primary use of Claude Code**: software development (Godot 4 game project 'space', repo kontari)",
+      "**Trusted repo**: C:\\Users\\micro\\Documents\\#GIT\\space, remote https://github.com/xidus90/kontari.git — visibility unconfirmed, treat as private by default; confidential material still requires care regardless of visibility",
+      "**Org-specific CLIs**: None configured",
+      "**Routine under user/ prefix**: none identified",
+      "**Primary use of Claude Code**: software development (loomux — a Go-based developer runtime: hooks, skills, code graph, second brain, LLM OS)",
+      "**Trusted repo**: C:\\Users\\micro\\Documents\\#GIT\\loomux, its remote `origin` (github.com/xidus90/loomux) — PUBLIC repo: only loomux's own work is safe to commit/push here; secrets and sensitive/personal data are never cleared into it regardless of visibility; content ported from outside this repo (e.g. other checkouts under home) is not loomux's own work",
+      "**Org-specific CLis**: ultraloom/loomux project CLIs — the repo-built `loomux`/`loomux.exe` binary (via `go run ./cmd/loomux` or built binary), and prefer the Go `ulinit`/`ulguard` binaries over the legacy Python toolchain path within this repo where both exist, per project CLAUDE.md guidance (repo-authored, not independently verified)",
+      "routine under this repo's working tree (C:\\Users\\micro\\Documents\\#GIT\\loomux) is the user's normal workspace"
+    ]
+  },
+  "voiceEnabled": true
 }
