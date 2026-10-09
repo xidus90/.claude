@@ -4,7 +4,7 @@
 # ///
 """Hook entry of an agent-team run: `team-gate.py --run <dir> <event>`.
 
-Events: task-created, task-completed, post-task-update, pre-tool-use read the
+Events: task-created, task-completed, post-task-update, post-ask-user, pre-tool-use read the
 hook payload from stdin; `supersede <gen>:<task_id>…` is the orchestrator's.
 Exit 0 lets the event through, exit 2 refuses it with the reasons on stderr.
 Every internal error refuses as well (fail-closed, spec section 6).
@@ -21,7 +21,7 @@ import teamgate_cmd
 import teamgate_tasks
 from teamgate_tasks import Run
 
-USAGE = "usage: team-gate.py --run <run-dir> (task-created|task-completed|post-task-update|pre-tool-use|supersede <gen>:<task_id>...)"
+USAGE = "usage: team-gate.py --run <run-dir> (task-created|task-completed|post-task-update|post-ask-user|pre-tool-use|supersede <gen>:<task_id>...)"
 
 # Set to True only if smoke test 9 showed that parking a task fires TaskCompleted.
 WAIT_MARKER = False
@@ -43,6 +43,8 @@ def dispatch(argv: list[str], stdin: str) -> list[str]:
         return teamgate_tasks.on_completed(run, payload, wait_marker=WAIT_MARKER)
     if event == "post-task-update":
         return teamgate_tasks.on_post_task_update(run, payload)
+    if event == "post-ask-user":
+        return teamgate_tasks.on_post_ask_user(run, payload)
     if event == "pre-tool-use":
         return teamgate_cmd.on_pre_tool_use(run, payload)
     return [USAGE]

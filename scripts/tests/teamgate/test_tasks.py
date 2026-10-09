@@ -810,6 +810,77 @@ def test_a_parked_task_completes_nothing_when_the_marker_is_on(world: World) -> 
     assert "has no commit" in world.completed("i1", "[impl:backend] T1 Build", description="WAITING: x")[0]
 
 
+# --- parking ---------------------------------------------------------------
+
+
+def ask(w: World, *answers: tuple[str, str]) -> list[str]:
+    """A PostToolUse payload of AskUserQuestion as Claude Code 2.1.295 sends it (smoke test 15)."""
+    questions = [{"question": q, "header": "Root", "options": [{"label": a, "description": a}], "multiSelect": False}
+                 for q, a in answers]
+    response = {"questions": questions, "answers": dict(answers), "annotations": {}}
+    return tg.on_post_ask_user(w.run, {"tool_name": "AskUserQuestion", "tool_input": response, "tool_response": response})
+
+
+def test_a_park_answer_parks_the_root_and_closes_its_open_tasks(world: World) -> None:
+    wt = world.worktree("B3")
+    world.created("x1", "[fix:backend] B3 Repair")
+    world.commit(wt, "b3.txt")
+    assert world.completed("x1", "[fix:backend] B3 Repair") == []  # done: must not be superseded
+    world.created("m", "[merge] B3")
+    world.created("h", "[hunt] R1.P1 All")
+    assert ask(world, ("B3 is stuck after three rounds. Park it?", "Park B3")) == []
+    register = world.register()
+    assert register[-2:] == [
+        {"event": "parked", "gen": 1, "root": "B3", "question": "B3 is stuck after three rounds. Park it?"},
+        {"event": "superseded", "gen": 1, "task_id": "m"},
+    ]
+    assert tg.parked(register) == {"B3": "B3 is stuck after three rounds. Park it?"}
+    by_key, _ = tg.tasks(register)
+    assert by_key[(1, "h")].open  # another root's task stays open
+
+
+@pytest.mark.parametrize("answer", ["Keep going", "park B3", "Parking B3"])
+def test_other_answers_park_nothing(world: World, answer: str) -> None:
+    world.worktree("B3")
+    world.created("x1", "[fix:backend] B3 Repair")
+    assert ask(world, ("What now?", answer)) == []
+    assert [e["event"] for e in world.register()] == ["created"]
+
+
+def test_a_park_answer_that_names_no_parkable_root_is_reported(world: World) -> None:
+    merged(world, "T1")
+    world.worktree("B3")
+    world.created("x1", "[fix:backend] B3 Repair")
+    before = world.register()
+    assert ask(world, ("z?", "Park B9")) == ["cannot park B9: no task of it in the register"]
+    assert world.register() == before  # nothing to write when every pick is refused
+    assert ask(world, ("a?", "Park F"), ("b?", "Park B3, Keep going"), ("c?", "Park B9"), ("d?", "Park T1"),
+               ("e?", "Park B3"), ("f?", "Park B3")) == [
+        "cannot park 'F': only T<n> and B<n> roots can be parked",
+        "cannot park 'B3, Keep going': only T<n> and B<n> roots can be parked",
+        "cannot park B9: no task of it in the register",
+        "cannot park T1: it is merged",
+        "cannot park B3: it is already parked",
+    ]
+    assert [e["root"] for e in world.register() if e["event"] == "parked"] == ["B3"]
+
+
+def test_a_payload_without_answers_is_reported(world: World) -> None:
+    for payload in ({}, {"tool_response": "x"}, {"tool_response": {"answers": ["Park B3"]}}):
+        assert tg.on_post_ask_user(world.run, payload) == ["AskUserQuestion payload carries no answers"]
+    assert tg.on_post_ask_user(world.run, {"tool_response": {"answers": {"q": 3}}}) == []
+
+
+def test_without_a_run_folder_parking_does_nothing(world: World) -> None:
+    shutil.rmtree(world.run.dir)
+    assert tg.on_post_ask_user(world.run, {}) == []
+
+
+def test_a_register_that_parks_a_root_without_tasks_is_broken() -> None:
+    with pytest.raises(GateError, match="register parks a root without tasks: 'B3'"):
+        tg.tasks([{"event": "parked", "gen": 1, "root": "B3", "question": "q"}])
+
+
 # --- status.md -------------------------------------------------------------
 
 

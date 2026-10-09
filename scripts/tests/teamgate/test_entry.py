@@ -38,6 +38,12 @@ def test_post_task_update_is_dispatched(world: World) -> None:
     assert (world.run.dir / "tasks.jsonl").read_text(encoding="utf-8").count('"deleted"') == 1
 
 
+def test_post_ask_user_is_dispatched(world: World, capsys: pytest.CaptureFixture[str]) -> None:
+    assert call(world, "post-ask-user", {"tool_response": {"answers": {"q": "Keep going"}}}) == 0
+    assert call(world, "post-ask-user", {}) == 2
+    assert "carries no answers" in capsys.readouterr().err
+
+
 def test_supersede_reads_no_payload(world: World) -> None:
     call(world, "task-created", {"task_id": "h", "task_subject": "[hunt] R1.P1 All"})
     assert gate.main(["--run", str(world.run.dir), "supersede", "1:h"], "") == 0

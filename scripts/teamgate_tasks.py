@@ -215,10 +215,15 @@ def tasks(events: list[JsonObj]) -> tuple[dict[tuple[int, str], Task], list[Task
     by_key: dict[tuple[int, str], Task] = {}
     done: list[Task] = []
     for e in events:
+        kind = e.get("event")
+        if kind == "parked":
+            # Parking names a root, not a task; the root must have shown up before.
+            if not any(t.title.root == e.get("root") for t in by_key.values()):
+                raise GateError(f"register parks a root without tasks: {e.get('root')!r}")
+            continue
         gen, tid = e.get("gen"), e.get("task_id")
         if not isinstance(gen, int) or not isinstance(tid, str):
             raise GateError(f"register event without gen/task_id: {e}")
-        kind = e.get("event")
         if kind == "created":
             subject = e.get("subject")
             title = parse_title(subject) if isinstance(subject, str) else None
@@ -240,6 +245,11 @@ def tasks(events: list[JsonObj]) -> tuple[dict[tuple[int, str], Task], list[Task
         else:
             raise GateError(f"unknown register event: {kind!r}")
     return by_key, done
+
+
+def parked(events: list[JsonObj]) -> dict[str, str]:
+    """Parked roots and the question the human answered with `Park <root>` (parked-roots spec 4.3)."""
+    return {str(e.get("root")): str(e.get("question", "")) for e in events if e.get("event") == "parked"}
 
 
 # --- verdicts --------------------------------------------------------------
@@ -636,6 +646,52 @@ def on_post_task_update(run: Run, payload: Payload) -> list[str]:
         append_event(run, event)
         write_status(run, [*events, event])
     return []
+
+
+PARK_ANSWER = "Park "
+PARKABLE = re.compile(r"^(T[1-9][0-9]*|B[1-9][0-9]*)$")
+
+
+def on_post_ask_user(run: Run, payload: Payload) -> list[str]:
+    """PostToolUse on AskUserQuestion: the human's answer `Park <root>` parks that root (parked-roots spec 4.2).
+
+    The answers come from tool_response, which the harness fills with what the human chose; a
+    caller cannot preset them (smoke test 15)."""
+    if not run.exists():
+        return []
+    response = payload.get("tool_response")
+    answers = response.get("answers") if isinstance(response, dict) else None
+    if not isinstance(answers, dict):
+        return ["AskUserQuestion payload carries no answers"]
+    picks = [(q, a) for q, a in answers.items() if isinstance(q, str) and isinstance(a, str) and a.startswith(PARK_ANSWER)]
+    if not picks:
+        return []
+    errors: list[str] = []
+    with locked(run):
+        events = read_register(run)
+        by_key, done = tasks(events)
+        held = set(parked(events))
+        new: list[JsonObj] = []
+        for question, answer in picks:
+            root = answer[len(PARK_ANSWER):]
+            if not PARKABLE.match(root):
+                errors.append(f"cannot park {root!r}: only T<n> and B<n> roots can be parked")
+            elif not any(t.title.root == root for t in by_key.values()):
+                errors.append(f"cannot park {root}: no task of it in the register")
+            elif any(t.title.kind == "merge" and t.title.root == root for t in done):
+                errors.append(f"cannot park {root}: it is merged")
+            elif root in held:
+                errors.append(f"cannot park {root}: it is already parked")
+            else:
+                held.add(root)
+                new.append({"event": "parked", "gen": run.gen, "root": root, "question": question})
+                new += [{"event": "superseded", "gen": t.gen, "task_id": t.task_id}
+                        for t in by_key.values() if t.title.root == root and t.open]
+        for e in new:
+            append_event(run, e)
+        if new:
+            write_status(run, [*events, *new])
+    return errors
 
 
 def supersede(run: Run, keys: list[str]) -> list[str]:
