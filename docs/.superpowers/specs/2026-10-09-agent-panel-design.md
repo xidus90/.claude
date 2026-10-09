@@ -139,9 +139,12 @@ Agents · Lauf 20261009-113117 (Gen 1–2)
   steht im Detail (Desktop: Tooltip, Terminal: ausgeklappte Zeile).
 - **Kosten** = Σ Token-Art × Preis des Modells der jeweiligen Nachricht.
 - **Dauer je Agent** = erste bis letzte Nachricht; läuft er, bis jetzt.
-- **Zeit im Kopf** = Wanduhr vom frühesten Start bis zum spätesten Ende (oder
-  jetzt), nicht die Summe der Einzeldauern — parallele Agents zählten sonst
-  doppelt. Pausen zwischen Generationen zählen mit.
+- **Zeit im Kopf** = Summe über die Generationen; je Generation die Wanduhr
+  vom frühesten Start bis zum spätesten Ende (oder jetzt) ihres Leads und
+  ihrer Agents. Nicht die Summe der Einzeldauern — parallele Agents zählten
+  sonst doppelt —, und Pausen zwischen Generationen zählen nicht mit. Eine
+  normale Sitzung ist eine Generation; die Pause vor einem `--resume`
+  derselben Sitzung zählt dort mit.
 
 ### Status
 
@@ -213,7 +216,7 @@ der Name auf keine Form, steht er unverändert da.
   letzte Zeile je ID), `price` (jede Token-Art × jedes Modell, 5m/1h),
   `classify` (jede Titelform der Team-Spec, unbekannter Name), `scan` (Lauf
   mit zwei Generationen, `run.json` ohne `sessions`, fremde Sitzung, Sitzung
-  in anderem Projektordner), `model` (Wanduhr bei parallelen Agents,
+  in anderem Projektordner), `model` (Wanduhr bei parallelen Agents, zwei Generationen mit Pause,
   Sortierung, Lead-Gruppe, flache Liste, Zuordnung über `id`, Abgleich unter
   und über 10 %), `register` mit gefälschtem `$` (Panel öffnet,
   `/agent-panel` schaltet um, Neuzeichnen bei Ereignis, Fehler wird Zeile).
