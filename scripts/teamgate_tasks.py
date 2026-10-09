@@ -11,7 +11,7 @@ import os
 import re
 import subprocess
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Collection, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -490,6 +490,8 @@ def on_created(run: Run, payload: Payload) -> list[str]:
     with locked(run):
         events = read_register(run)
         by_key, done = tasks(events)
+        if title.root and title.root in parked(events):
+            return [f"root {title.root} is parked"]
         event: JsonObj = {"event": "created", "gen": run.gen, "task_id": task_id, "subject": subject}
         if title.kind in {"impl", "fix"}:
             wt = run.worktree(str(title.root))
@@ -529,7 +531,7 @@ def on_completed(run: Run, payload: Payload, wait_marker: bool = False) -> list[
         if task.subject != subject:
             # A teammate may rename a task; the gate follows what was registered at creation.
             return [f"task subject changed since creation: {task.subject!r} -> {subject!r}"]
-        errors = _completion_errors(run, task.title, task, payload, by_key, done)
+        errors = _completion_errors(run, task.title, task, payload, by_key, done, set(parked(events)))
         if errors:
             return errors
         event: JsonObj = {"event": "completed", "gen": gen, "task_id": task_id}
@@ -539,7 +541,8 @@ def on_completed(run: Run, payload: Payload, wait_marker: bool = False) -> list[
 
 
 def _completion_errors(
-    run: Run, title: Title, task: Task, payload: Payload, by_key: dict[tuple[int, str], Task], done: list[Task]
+    run: Run, title: Title, task: Task, payload: Payload, by_key: dict[tuple[int, str], Task], done: list[Task],
+    parked_roots: Collection[str] = (),
 ) -> list[str]:
     root = str(title.root)
     if title.kind in {"impl", "fix"}:
@@ -563,7 +566,7 @@ def _completion_errors(
         return errors
     if title.kind == "merge":
         return check_merge(run, root, done)
-    return check_final(run, task, by_key, done)
+    return check_final(run, task, by_key, done, parked_roots)
 
 
 def check_merge(run: Run, root: str, done: list[Task]) -> list[str]:
@@ -594,7 +597,9 @@ def roots(by_key: dict[tuple[int, str], Task]) -> list[str]:
     return list(seen)
 
 
-def check_final(run: Run, final: Task, by_key: dict[tuple[int, str], Task], done: list[Task]) -> list[str]:
+def check_final(
+    run: Run, final: Task, by_key: dict[tuple[int, str], Task], done: list[Task], parked_roots: Collection[str] = ()
+) -> list[str]:
     errors = [
         f"open task: {t.subject} ({t.task_id}, g{t.gen})"
         for t in by_key.values()
@@ -602,6 +607,8 @@ def check_final(run: Run, final: Task, by_key: dict[tuple[int, str], Task], done
     ]
     feature = run.feature
     for root in roots(by_key):
+        if root in parked_roots:
+            continue  # parked by the human: not merged on purpose (parked-roots spec 4.4)
         if not any(t.title.kind == "merge" and t.title.root == root for t in done):
             errors.append(f"root {root} has no completed [merge]")
         elif git(run.repo, "merge-base", "--is-ancestor", run.branch(root), feature).returncode != 0:
@@ -736,6 +743,7 @@ def _state(root: str, by_key: dict[tuple[int, str], Task], done: list[Task], rou
 
 def write_status(run: Run, events: list[JsonObj]) -> None:
     by_key, done = tasks(events)
+    held = parked(events)
     meta = run.meta()
     lines = [
         f"# Team run {run.name}",
@@ -755,7 +763,7 @@ def write_status(run: Run, events: list[JsonObj]) -> None:
             if t.title.root == root and t.title.kind == "verify" and run.verdict_path(t.gen, t.task_id).is_file():
                 latest = f"verify:{t.title.sub} {load_verdict(run, t.gen, t.task_id).get('verdict')}"
                 break
-        lines.append(f"| {root} | {_state(root, by_key, done, rounds, run)} | {rounds} | {latest} |")
+        lines.append(f"| {root} | {'parked' if root in held else _state(root, by_key, done, rounds, run)} | {rounds} | {latest} |")
     hunts = [t for t in by_key.values() if t.title.kind == "hunt"]
     if hunts:
         lines += ["", "## Hunt", "", "| Task | State | Findings |", "|---|---|---|"]

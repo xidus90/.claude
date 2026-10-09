@@ -881,6 +881,38 @@ def test_a_register_that_parks_a_root_without_tasks_is_broken() -> None:
         tg.tasks([{"event": "parked", "gen": 1, "root": "B3", "question": "q"}])
 
 
+def test_a_parked_root_gets_no_new_tasks(world: World) -> None:
+    world.worktree("B3")
+    world.created("x1", "[fix:backend] B3 Repair")
+    ask(world, ("Park?", "Park B3"))
+    assert world.created("m2", "[merge] B3") == ["root B3 is parked"]
+    assert world.created("h", "[hunt] R1.P1 All") == []
+
+
+def test_final_passes_once_the_failing_root_is_parked(world: World) -> None:
+    merged(world, "T1")
+    wt = world.worktree("B3")
+    world.created("x1", "[fix:backend] B3 Repair")
+    head = world.commit(wt, "b3.txt")
+    assert world.completed("x1", "[fix:backend] B3 Repair") == []
+    world.created("vf", "[verify:fix] B3")
+    log = world.gate_log("B3", head, 1)
+    red = finding("B3-ver-F1", "claim", "refuted", evidence={"command": "gate", "output_file": log})
+    verify(world, "vf", "[verify:fix] B3", head, "fail", [red])
+    assert world.completed("vf", "[verify:fix] B3") == []
+    world.created("f", "[final]")
+    assert world.completed("f", "[final]") == ["root B3 has no completed [merge]", "the latest verify verdict of root B3 is fail"]
+    assert ask(world, ("B3 failed its gate. Park it?", "Park B3")) == []
+    assert world.completed("f", "[final]") == []  # the same [final] task, completed again
+
+
+def test_status_shows_a_parked_root(world: World) -> None:
+    world.worktree("B3")
+    world.created("x1", "[fix:backend] B3 Repair")
+    ask(world, ("Park?", "Park B3"))
+    assert "| B3 | parked | 1 | — |" in (world.run.dir / "status.md").read_text(encoding="utf-8")
+
+
 # --- status.md -------------------------------------------------------------
 
 
