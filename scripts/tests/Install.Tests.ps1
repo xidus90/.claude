@@ -59,6 +59,13 @@ Describe 'Get-MarketplaceForPlugin' {
     It 'maps the plugins of this repo to the repo itself' {
         Get-MarketplaceForPlugin -Plugin 'agent-panel@claude-config' | Should -Be $script:RepoRoot
     }
+    It 'maps the third-party plugins to their own marketplaces' -ForEach @(
+        @{ Plugin = 'antigravity@antigravity-for-claude-code'; Source = 'yuting0624/antigravity-for-claude-code' }
+        @{ Plugin = 'ponytail@ponytail'; Source = 'DietrichGebert/ponytail' }
+        @{ Plugin = 'savvy-progress@claude-kit'; Source = 'https://github.com/johnnyvizz/claude-kit.git' }
+    ) {
+        Get-MarketplaceForPlugin -Plugin $Plugin | Should -Be $Source
+    }
     It 'returns nothing for a marketplace it does not know' {
         # Better to install nothing than to guess a URL and register a
         # marketplace the user never asked for.
