@@ -2,9 +2,20 @@ import type { AgentSummary, Summary, TokenCounts } from '../shared/summary.ts'
 
 export type LiveAgent = { id: string; status: string }
 export type Glyph = '●' | '✓' | '✗' | '⊘'
-export type Row = { key: string; glyph: Glyph; label: string; model: string; cost: string; tokens: string; time: string; note: string; detail: string }
-export type Group = { key: string; title: string; cost: string; tokens: string; time: string; costUsd: number; isRunning: boolean; rows: Row[] }
-export type View = { title: string; totals: string; counts: string; notices: string[]; groups: Group[] }
+export type Status = 'running' | 'done' | 'failed' | 'aborted'
+export type StatusCounts = Record<Status, number>
+export type Shares = { input: number; output: number; cacheRead: number; cacheWrite: number }
+export type Overview = {
+  cost: string
+  tokens: string
+  time: string
+  shares: Shares
+  amounts: { input: string; output: string; cacheRead: string; cacheWrite: string }
+  line: string
+}
+export type Row = { key: string; glyph: Glyph; status: Status; label: string; model: string; effort: string; cost: string; tokens: string; time: string; note: string; detail: string; shares: Shares; meta: string }
+export type Group = { key: string; role: string; title: string; cost: string; tokens: string; time: string; costUsd: number; costShare: number; isRunning: boolean; counts: StatusCounts; rows: Row[] }
+export type View = { title: string; totals: string; counts: string; notices: string[]; groups: Group[]; status: StatusCounts; overview: Overview }
 export type ViewInput = {
   summary: Summary | null
   live: LiveAgent[]
@@ -33,6 +44,29 @@ export function fmtTime(ms: number): string {
 }
 
 const tokenSum = (t: TokenCounts): number => t.input + t.output + t.cacheRead + t.cacheWrite5m + t.cacheWrite1h
+
+const STATUS_OF: Record<Glyph, Status> = { '●': 'running', '✓': 'done', '✗': 'failed', '⊘': 'aborted' }
+const noCounts = (): StatusCounts => ({ running: 0, done: 0, failed: 0, aborted: 0 })
+const noShares = (): Shares => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+
+const emptyOverview = (): Overview => ({
+  cost: '≈ $0.00', tokens: '0', time: '0:00', shares: noShares(),
+  amounts: { input: '0', output: '0', cacheRead: '0', cacheWrite: '0' }, line: '',
+})
+
+export function sharesOf(t: TokenCounts): Shares {
+  const total = tokenSum(t)
+  if (total === 0) return noShares()
+  return { input: t.input / total, output: t.output / total, cacheRead: t.cacheRead / total, cacheWrite: (t.cacheWrite5m + t.cacheWrite1h) / total }
+}
+
+const addTokens = (agents: AgentSummary[]): TokenCounts => agents.reduce<TokenCounts>((n, a) => ({
+  input: n.input + a.tokens.input,
+  output: n.output + a.tokens.output,
+  cacheRead: n.cacheRead + a.tokens.cacheRead,
+  cacheWrite5m: n.cacheWrite5m + a.tokens.cacheWrite5m,
+  cacheWrite1h: n.cacheWrite1h + a.tokens.cacheWrite1h,
+}), { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 })
 
 function modelName(id: string): string {
   const m = /(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2})(?!\d))?/i.exec(id)
@@ -78,7 +112,7 @@ function noteOf(a: AgentSummary, glyph: Glyph): string {
 export function buildView(input: ViewInput): View {
   const notices = input.error ? [`⚠ ${input.error}`] : []
   const s = input.summary
-  if (!s) return { title: 'Agents', totals: input.error ? '' : 'lade …', counts: '', notices, groups: [] }
+  if (!s) return { title: 'Agents', totals: input.error ? '' : 'lade …', counts: '', notices, groups: [], status: noCounts(), overview: emptyOverview() }
   if (s.unreadableLines > 0) notices.push(`⚠ ${s.unreadableLines} Zeilen unlesbar`)
   for (const p of s.problems) notices.push(`⚠ ${p}`)
 
@@ -94,17 +128,24 @@ export function buildView(input: ViewInput): View {
     const ended = endOf(a, glyph, input.now)
     const isCurrentLead = a.kind === 'lead' && a.sessionId === current
     const reported = isCurrentLead && input.reportedCostUsd !== null ? `gemeldet ${fmtCost(input.reportedCostUsd)}` : ''
+    const time = fmtTime(a.firstAt === null ? 0 : (ended as number) - a.firstAt)
     return {
       key: a.id,
       glyph,
+      status: STATUS_OF[glyph],
       label,
       model: modelName(a.model),
+      effort: a.effort,
       cost: a.unpriced ? '?' : fmtCost(a.costUsd),
       tokens: fmtTokens(tokenSum(a.tokens)),
-      time: fmtTime(a.firstAt === null ? 0 : (ended as number) - a.firstAt),
+      time,
       note: reported || noteOf(a, glyph),
       // Cache reads dwarf the rest, so the total alone says little.
       detail: `in ${fmtTokens(a.tokens.input)} · out ${fmtTokens(a.tokens.output)} · read ${fmtTokens(a.tokens.cacheRead)} · write ${fmtTokens(a.tokens.cacheWrite5m)}/${fmtTokens(a.tokens.cacheWrite1h)}`,
+      shares: sharesOf(a.tokens),
+      // A failed or aborted row shows why instead of what it cost.
+      meta: [modelName(a.model), a.effort, ...(glyph === '✗' || glyph === '⊘' ? [noteOf(a, glyph)] : [a.unpriced ? '?' : fmtCost(a.costUsd), `⏱ ${time}`, reported])]
+        .filter((p) => p !== '').join(' · '),
     }
   }
 
@@ -120,20 +161,26 @@ export function buildView(input: ViewInput): View {
       : [...members].sort((x, y) =>
           Number(glyphs.get(y) === '●') - Number(glyphs.get(x) === '●') || (x.firstAt ?? 0) - (y.firstAt ?? 0))
     const costUsd = members.reduce((n, a) => n + a.costUsd, 0)
+    const counts = noCounts()
+    for (const a of members) counts[STATUS_OF[glyphs.get(a) as Glyph]] += 1
     return {
       key,
+      role: key,
       title: key === 'lead' ? (isTeam ? 'Lead (Orchestrator)' : 'Lead') : key === 'agents' ? 'Agents' : key,
       cost: fmtCost(costUsd),
       tokens: fmtTokens(members.reduce((n, a) => n + tokenSum(a.tokens), 0)),
       time: fmtTime(wallClock(members, glyphs, s.generations, input.now)),
       costUsd,
+      costShare: 0,
       isRunning: members.some((a) => glyphs.get(a) === '●'),
+      counts,
       rows: sorted.map(rowOf),
     }
   })
   groups.sort((x, y) => Number(y.isRunning) - Number(x.isRunning) || y.costUsd - x.costUsd)
 
   const total = s.agents.reduce((n, a) => n + a.costUsd, 0)
+  for (const g of groups) g.costShare = total > 0 ? g.costUsd / total : 0
   const unpriced = s.agents.filter((a) => a.unpriced).length
   const wall = wallClock(s.agents, glyphs, s.generations, input.now)
   const tokens = s.agents.reduce((n, a) => n + tokenSum(a.tokens), 0)
@@ -151,6 +198,18 @@ export function buildView(input: ViewInput): View {
   const count = (g: Glyph) => agentGlyphs.filter((x) => x === g).length
   const counts = [`● ${count('●')}`, `✓ ${count('✓')}`, `✗ ${count('✗')}`, ...(count('⊘') ? [`⊘ ${count('⊘')}`] : [])].join('  ')
 
+  const status = noCounts()
+  for (const a of s.agents) if (a.kind === 'agent') status[STATUS_OF[glyphs.get(a) as Glyph]] += 1
+  const sum = addTokens(s.agents)
+  const overview: Overview = {
+    cost: `≈ ${fmtCost(total)}`,
+    tokens: fmtTokens(tokens),
+    time: fmtTime(wall),
+    shares: sharesOf(sum),
+    amounts: { input: fmtTokens(sum.input), output: fmtTokens(sum.output), cacheRead: fmtTokens(sum.cacheRead), cacheWrite: fmtTokens(sum.cacheWrite5m + sum.cacheWrite1h) },
+    line: `≈ ${fmtCost(total)} · ${fmtTokens(tokens)} · ${fmtTime(wall)}${unpriced ? ` · ohne ${unpriced} Agents` : ''}`,
+  }
+
   const gens = s.generations.length
   return {
     title: isTeam ? `Lauf ${s.runId}${gens > 1 ? ` (Gen 1–${gens})` : ''}` : 'Diese Sitzung',
@@ -158,8 +217,18 @@ export function buildView(input: ViewInput): View {
     counts,
     notices,
     groups,
+    status,
+    overview,
   }
 }
+
+export const statusLine = (c: StatusCounts): string =>
+  `● läuft ${c.running}   ✓ fertig ${c.done}   ✗ gescheitert ${c.failed}   ⊘ abgebrochen ${c.aborted}`
+
+export const countsLine = (c: StatusCounts): string =>
+  [`● ${c.running}`, `✓ ${c.done}`, ...(c.failed ? [`✗ ${c.failed}`] : []), ...(c.aborted ? [`⊘ ${c.aborted}`] : [])].join('  ')
+
+export const visibleRows = (g: Group, hideDone: boolean): Row[] => (hideDone ? g.rows.filter((r) => r.status !== 'done') : g.rows)
 
 export const groupLine = (g: Group, isCollapsed: boolean): string =>
   `${isCollapsed ? '▸' : '▾'} ${g.title}  ${g.cost}  ${g.tokens}  ${g.time}`

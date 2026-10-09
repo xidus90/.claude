@@ -1,13 +1,13 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildView, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, dirsOf, toggle, type ViewInput } from '../hooks/view.ts'
+import { buildView, countsLine, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, sharesOf, startError, statusLine, dirsOf, toggle, visibleRows, type ViewInput } from '../hooks/view.ts'
 import type { AgentSummary, Summary } from '../shared/summary.ts'
 
 const MIN = 60_000
 
 function agent(p: Partial<AgentSummary>): AgentSummary {
   return {
-    id: 'a', sessionId: 's1', kind: 'agent', name: 'impl-T1', role: 'implementer-backend', task: 'impl T1', model: 'claude-sonnet-5-5', effort: '',
+    id: 'a', sessionId: 's1', kind: 'agent', name: 'impl-T1', role: 'implementer-backend', task: 'impl T1', model: 'claude-sonnet-5-5', effort: 'medium',
     tokens: { input: 1000, output: 2000, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
     costUsd: 0.5, unpriced: false, firstAt: 0, lastAt: MIN, end: 'answered', errorText: '', ...p,
   }
@@ -121,7 +121,10 @@ test('lists script errors, unreadable lines and problems as notices', () => {
 })
 
 test('says it is loading before the first summary, and shows only the error if that failed', () => {
-  assert.deepEqual(buildView(input(null)), { title: 'Agents', totals: 'lade …', counts: '', notices: [], groups: [] })
+  assert.deepEqual(buildView(input(null)), {
+    title: 'Agents', totals: 'lade …', counts: '', notices: [], groups: [], status: { running: 0, done: 0, failed: 0, aborted: 0 },
+    overview: { cost: '≈ $0.00', tokens: '0', time: '0:00', shares: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, amounts: { input: '0', output: '0', cacheRead: '0', cacheWrite: '0' }, line: '' },
+  })
   assert.deepEqual(buildView(input(null, { error: 'node nicht gefunden: x' })).notices, ['⚠ node nicht gefunden: x'])
 })
 
@@ -195,4 +198,65 @@ test('toggle adds a missing key and removes a present one', () => {
 test('tells whether a pane is open', () => {
   assert.equal(isOpen([{ id: 'x' }, { id: 'agent-panel' }], 'agent-panel'), true)
   assert.equal(isOpen([{ id: 'x' }], 'agent-panel'), false)
+})
+
+test('splits tokens into shares, and gives all zeros for no tokens', () => {
+  assert.deepEqual(sharesOf({ input: 10, output: 30, cacheRead: 50, cacheWrite5m: 5, cacheWrite1h: 5 }), { input: 0.1, output: 0.3, cacheRead: 0.5, cacheWrite: 0.1 })
+  assert.deepEqual(sharesOf({ input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 }), { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+})
+
+test('puts model, effort, cost and time into a row, and the note instead of cost for failures', () => {
+  const v = buildView(input(plain([lead({}), agent({ id: 'a', name: 'a' }), agent({ id: 'b', name: 'b', effort: '' }), agent({ id: 'e', name: 'e', end: 'error', errorText: 'boom' })])))
+  const rows = Object.fromEntries((v.groups.find((g) => g.key === 'agents')?.rows ?? []).map((r) => [r.label, r]))
+  assert.equal(rows.a?.meta, 'Sonnet 5.5 · medium · $0.50 · ⏱ 1:00')
+  assert.equal(rows.b?.meta, 'Sonnet 5.5 · $0.50 · ⏱ 1:00')
+  assert.equal(rows.e?.meta, 'Sonnet 5.5 · medium · boom')
+  assert.equal(rows.a?.status, 'done')
+  assert.equal(rows.e?.status, 'failed')
+})
+
+test('adds the reported cost to the current lead row', () => {
+  const v = buildView(input(plain([lead({ effort: 'xhigh' })]), { reportedCostUsd: 0.5 }))
+  assert.equal(v.groups[0]?.rows[0]?.meta, 'Opus 5.5 · xhigh · $0.50 · ⏱ 10:00 · gemeldet $0.50')
+})
+
+test('counts statuses overall and per role, and gives each role its cost share', () => {
+  const v = buildView(input(team([
+    lead({ costUsd: 1 }),
+    agent({ id: 'r', costUsd: 1 }), agent({ id: 'd', costUsd: 1 }), agent({ id: 'f', costUsd: 1, end: 'error' }), agent({ id: 'x', costUsd: 0, end: 'open' }),
+  ]), { live: [{ id: 'r', status: 'running' }] }))
+  assert.deepEqual(v.status, { running: 1, done: 1, failed: 1, aborted: 1 })
+  const g = v.groups.find((x) => x.key === 'implementer-backend')
+  assert.deepEqual(g?.counts, { running: 1, done: 1, failed: 1, aborted: 1 })
+  assert.equal(g?.costShare, 0.75)
+  assert.equal(g?.role, 'implementer-backend')
+  assert.equal(v.groups.find((x) => x.key === 'lead')?.role, 'lead')
+})
+
+test('gives a zero cost share when nothing cost anything', () => {
+  const v = buildView(input(plain([lead({ costUsd: 0 }), agent({ id: 'a', costUsd: 0 })])))
+  assert.deepEqual(v.groups.map((g) => g.costShare), [0, 0])
+})
+
+test('builds the overview with amounts per token kind and a one-line summary', () => {
+  const v = buildView(input(plain([lead({ tokens: { input: 110_000, output: 160_000, cacheRead: 1_260_000, cacheWrite5m: 200_000, cacheWrite1h: 70_000 }, costUsd: 4.12, firstAt: 0, lastAt: 10 * MIN })])))
+  assert.deepEqual(v.overview.amounts, { input: '110k', output: '160k', cacheRead: '1.3M', cacheWrite: '270k' })
+  assert.equal(v.overview.cost, '≈ $4.12')
+  assert.equal(v.overview.line, '≈ $4.12 · 1.8M · 10:00')
+  assert.ok(Math.abs(v.overview.shares.cacheRead - 1_260_000 / 1_800_000) < 1e-9)
+})
+
+test('words the status counts as a line and as a short summary', () => {
+  const c = { running: 2, done: 9, failed: 1, aborted: 0 }
+  assert.equal(statusLine(c), '● läuft 2   ✓ fertig 9   ✗ gescheitert 1   ⊘ abgebrochen 0')
+  assert.equal(countsLine(c), '● 2  ✓ 9  ✗ 1')
+  assert.equal(countsLine({ running: 0, done: 3, failed: 0, aborted: 2 }), '● 0  ✓ 3  ⊘ 2')
+})
+
+test('hides finished rows on request', () => {
+  const v = buildView(input(plain([lead({}), agent({ id: 'a', name: 'a' }), agent({ id: 'r', name: 'r' })]), { live: [{ id: 'r', status: 'running' }] }))
+  const g = v.groups.find((x) => x.key === 'agents')
+  assert.ok(g)
+  assert.deepEqual(visibleRows(g, false).map((r) => r.label), ['r', 'a'])
+  assert.deepEqual(visibleRows(g, true).map((r) => r.label), ['r'])
 })
