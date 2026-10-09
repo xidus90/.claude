@@ -1,6 +1,6 @@
 import type { EngineInterface, Register } from 'claude-code'
 import type { Summary } from '../shared/summary.ts'
-import { buildView, detailLine, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, type LiveAgent } from './view.ts'
+import { buildView, dirsOf, toggle,detailLine, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, type LiveAgent } from './view.ts'
 
 const PANE = 'agent-panel'
 // Measured in docs/.superpowers/smoke/2026-10-09-agent-panel-probe.md.
@@ -23,8 +23,12 @@ async function refresh($: EngineInterface): Promise<void> {
   try {
     const session = await $.session.id()
     const cwd = await $.session.cwd()
-    const home = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? ''
-    const tmp = (await $.env.get('TEMP')) ?? (await $.env.get('TMPDIR')) ?? '/tmp'
+    const { home, tmp } = dirsOf({
+      USERPROFILE: await $.env.get('USERPROFILE'),
+      HOME: await $.env.get('HOME'),
+      TEMP: await $.env.get('TEMP'),
+      TMPDIR: await $.env.get('TMPDIR'),
+    })
     const argv = scriptArgs(`${$.plugin.root}/cli/summarize.ts`, session, cwd, home, tmp)
     const parsed = parseResult(await $.process.run(argv, { timeoutMs: 20_000 }))
     if (parsed.summary) summary = parsed.summary
@@ -93,8 +97,7 @@ export const register: Register = (on) => {
             plain: true,
             label: groupLine(g, collapsed.has(g.key)),
             onPress: () => {
-              if (collapsed.has(g.key)) collapsed.delete(g.key)
-              else collapsed.add(g.key)
+              toggle(collapsed, g.key)
               $.ui.invalidate('ui.render')
             },
           }),
@@ -110,8 +113,7 @@ export const register: Register = (on) => {
                       plain: true,
                       label: rowLine(r),
                       onPress: () => {
-                        if (expanded.has(r.key)) expanded.delete(r.key)
-                        else expanded.add(r.key)
+                        toggle(expanded, r.key)
                         $.ui.invalidate('ui.render')
                       },
                     }),

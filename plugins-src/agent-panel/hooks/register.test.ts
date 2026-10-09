@@ -44,7 +44,8 @@ function stub(
   })
   on('ui.close', ($, e) => {
     closed.push(e.id)
-    panes.splice(panes.indexOf(e.id), 1)
+    const i = panes.indexOf(e.id)
+    if (i >= 0) panes.splice(i, 1)
     return { value: undefined }
   })
   on('ui.panes', () => ({ value: panes.map((id) => ({ id })) }))
@@ -94,8 +95,8 @@ test('/agent-panel opens the pane, and a second time closes it', async ($, on) =
   const closed: string[] = []
   stub(on, [], () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), opened, closed, [])
   await $.session.start(START)
-  await $.command.run({ command: 'agent-panel', args: '' })
-  await $.command.run({ command: 'agent-panel', args: '' })
+  await $.command.run(TOGGLE)
+  await $.command.run(TOGGLE)
   expect(opened).toEqual(['agent-panel'])
   expect(closed).toEqual(['agent-panel'])
 })

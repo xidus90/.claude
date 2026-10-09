@@ -203,3 +203,15 @@ export function reportedCost(cost: unknown): number | null {
 export function scriptArgs(script: string, session: string, cwd: string, home: string, tmp: string): string[] {
   return ['node', script, '--session', session, '--cwd', cwd, '--home', home, '--cache', `${tmp}/agent-panel/${session}.json`]
 }
+
+export type DirEnv = { USERPROFILE?: string | undefined; HOME?: string | undefined; TEMP?: string | undefined; TMPDIR?: string | undefined }
+
+export const dirsOf = (env: DirEnv): { home: string; tmp: string } => ({
+  home: env.USERPROFILE ?? env.HOME ?? '',
+  tmp: env.TEMP ?? env.TMPDIR ?? '/tmp',
+})
+
+export function toggle(set: Set<string>, key: string): void {
+  if (set.has(key)) set.delete(key)
+  else set.add(key)
+}

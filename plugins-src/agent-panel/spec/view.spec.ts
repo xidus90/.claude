@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildView, detailLine, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, type ViewInput } from '../hooks/view.ts'
+import { buildView, detailLine, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, dirsOf, toggle, type ViewInput } from '../hooks/view.ts'
 import type { AgentSummary, Summary } from '../shared/summary.ts'
 
 const MIN = 60_000
@@ -175,4 +175,18 @@ test('builds the script call', () => {
 test('sorts an agent without a first time as if it started at zero', () => {
   const v = buildView(input(plain([lead({}), agent({ id: 'b', name: 'late', firstAt: 5 }), agent({ id: 'a', name: 'none', firstAt: null, lastAt: null }), agent({ id: 'c', name: 'late2', firstAt: 9 })])))
   assert.deepEqual(v.groups.find((g) => g.key === 'agents')?.rows.map((r) => [r.label, r.time]), [['none', '0:00'], ['late', '1:00'], ['late2', '1:00']])
+})
+
+test('dirsOf prefers the Windows variables, falls back to POSIX, then to defaults', () => {
+  assert.deepEqual(dirsOf({ USERPROFILE: 'U', HOME: 'H', TEMP: 'T', TMPDIR: 'D' }), { home: 'U', tmp: 'T' })
+  assert.deepEqual(dirsOf({ HOME: 'H', TMPDIR: 'D' }), { home: 'H', tmp: 'D' })
+  assert.deepEqual(dirsOf({}), { home: '', tmp: '/tmp' })
+})
+
+test('toggle adds a missing key and removes a present one', () => {
+  const s = new Set<string>()
+  toggle(s, 'a')
+  assert.deepEqual([...s], ['a'])
+  toggle(s, 'a')
+  assert.deepEqual([...s], [])
 })
