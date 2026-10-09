@@ -1,0 +1,18 @@
+{
+  "extends": "./.claude-plugin/types/tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "noUncheckedIndexedAccess": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "target": "es2023",
+    "typeRoots": ["./.claude-plugin/types", "./node_modules/@types"],
+    "types": ["node", "claude-code", "claude-code-tools", "claude-code-mcp"],
+    "skipLibCheck": true
+  },
+  "include": ["cli", "hooks", "shared", "spec", ".claude-plugin/types"]
+}
