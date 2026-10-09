@@ -286,23 +286,51 @@ def test_duplicate_of_is_only_for_verify_hunt(world: World) -> None:
 
 
 @pytest.mark.parametrize(
-    ("kind", "status", "verdict", "ok"),
+    ("kind", "status", "severity", "verdict", "ok"),
     [
-        ("defect", "confirmed", "fail", True),
-        ("defect", "confirmed", "pass", False),
-        ("claim", "refuted", "fail", True),
-        ("claim", "refuted", "pass", False),
-        ("defect", "refuted", "pass", True),
-        ("defect", "refuted", "fail", False),
-        ("claim", "confirmed", "pass", True),
-        ("claim", "confirmed", "fail", False),
+        ("defect", "confirmed", "high", "fail", True),
+        ("defect", "confirmed", "high", "pass", False),
+        ("defect", "confirmed", "medium", "fail", True),
+        ("defect", "confirmed", "critical", "fail", True),
+        ("defect", "confirmed", "low", "pass", True),
+        ("defect", "confirmed", "low", "fail", False),
+        ("claim", "refuted", "low", "fail", True),
+        ("claim", "refuted", "low", "pass", False),
+        ("claim", "refuted", "high", "fail", True),
+        ("claim", "refuted", "high", "pass", False),
+        ("defect", "refuted", "high", "pass", True),
+        ("defect", "refuted", "high", "fail", False),
+        ("claim", "confirmed", "high", "pass", True),
+        ("claim", "confirmed", "high", "fail", False),
     ],
 )
-def test_the_verdict_follows_the_findings(world: World, kind: str, status: str, verdict: str, ok: bool) -> None:
+def test_the_verdict_follows_the_findings(world: World, kind: str, status: str, severity: str, verdict: str, ok: bool) -> None:
     world.created("v1", "[verify:final] F")
-    verify(world, "v1", "[verify:final] F", world.feature_head, verdict, [settled(world, "F-ver-F1", kind, status)])
+    verify(world, "v1", "[verify:final] F", world.feature_head, verdict, [settled(world, "F-ver-F1", kind, status, severity=severity)])
     errors = world.completed("v1", "[verify:final] F")
-    assert errors == ([] if ok else ["verdict must be fail exactly when a defect is confirmed or a claim refuted"])
+    assert errors == ([] if ok else ["verdict must be fail exactly when a defect of severity medium or worse is confirmed or a claim refuted"])
+
+
+def test_a_hunt_finding_confirmed_as_low_passes(world: World) -> None:
+    world.created("vh", "[verify:hunt] B1")
+    low = settled(world, "R1-P1-F1", "defect", "confirmed", severity="low")
+    verify(world, "vh", "[verify:hunt] B1", world.feature_head, "pass", [low])
+    assert world.completed("vh", "[verify:hunt] B1") == []
+
+
+def test_a_root_whose_review_confirms_only_a_low_finding_merges(world: World) -> None:
+    _, head = build(world)
+    for sub in ("code", "security"):
+        world.created(f"r{sub}", f"[review:{sub}] T1")
+        review(world, f"r{sub}", f"[review:{sub}] T1", head, [finding("T1-code-F1", severity="low")] if sub == "code" else [])
+        assert world.completed(f"r{sub}", f"[review:{sub}] T1") == []
+    world.created("vr", "[verify:review] T1")
+    low = settled(world, "T1-code-F1", "defect", "confirmed", severity="low")
+    verify(world, "vr", "[verify:review] T1", head, "pass", [low], judges=["rcode", "rsecurity"])
+    assert world.completed("vr", "[verify:review] T1") == []
+    world.created("m", "[merge] T1")
+    sh(world.repo, "merge", "-q", "--ff-only", world.run.branch("T1"))
+    assert world.completed("m", "[merge] T1") == []
 
 
 def test_a_verify_verdict_must_be_pass_or_fail(world: World) -> None:

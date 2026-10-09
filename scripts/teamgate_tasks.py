@@ -23,6 +23,8 @@ DOMAIN = r"(?:infra|backend|frontend|ux)"
 ROOT = r"(?:T[1-9][0-9]*|B[1-9][0-9]*|F)"
 HEX = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 SEVERITIES = {"low", "medium", "high", "critical"}
+# A confirmed defect below medium goes to the report, not into a round (scope-and-cleanup spec 5.1).
+BLOCKING = {"medium", "high", "critical"}
 
 _FORMS: list[tuple[str, re.Pattern[str]]] = [
     ("impl", re.compile(rf"^\[impl:(?P<domain>{DOMAIN})\] (?P<root>{ROOT}) \S.*$")),
@@ -331,7 +333,7 @@ def check_verdict(run: Run, title: Title, task_id: str, subject: str, v: JsonObj
         dup = f.get("duplicate_of")
         if dup is not None and (title.sub != "hunt" or not isinstance(dup, str) or not re.match(r"^B[1-9][0-9]*$", dup)):
             errors.append(f"{where}.duplicate_of must be B<n>, and only in verify:hunt")
-        if (kind == "defect" and status == "confirmed") or (kind == "claim" and status == "refuted"):
+        if (kind == "defect" and status == "confirmed" and f.get("severity") in BLOCKING) or (kind == "claim" and status == "refuted"):
             failing = True
     if not is_verify:
         if "verdict" in v:
@@ -340,7 +342,7 @@ def check_verdict(run: Run, title: Title, task_id: str, subject: str, v: JsonObj
     if v.get("verdict") not in {"pass", "fail"}:
         errors.append("verdict must be pass or fail")
     elif (v.get("verdict") == "fail") != failing:
-        errors.append("verdict must be fail exactly when a defect is confirmed or a claim refuted")
+        errors.append("verdict must be fail exactly when a defect of severity medium or worse is confirmed or a claim refuted")
     if title.sub == "rebase":
         if not isinstance(v.get("rebased_from"), str) or not HEX.match(str(v.get("rebased_from"))):
             errors.append("verify:rebase needs rebased_from")
