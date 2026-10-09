@@ -865,6 +865,15 @@ def test_a_park_answer_that_names_no_parkable_root_is_reported(world: World) -> 
     assert [e["root"] for e in world.register() if e["event"] == "parked"] == ["B3"]
 
 
+def test_a_park_pick_inside_a_multi_select_answer_is_reported(world: World) -> None:
+    world.worktree("B3")
+    world.created("x1", "[fix:backend] B3 Repair")
+    assert ask(world, ("Which?", "Keep going, Park B3")) == [
+        "cannot park 'Keep going, Park B3': only T<n> and B<n> roots can be parked",
+    ]
+    assert [e["event"] for e in world.register()] == ["created"]
+
+
 def test_a_payload_without_answers_is_reported(world: World) -> None:
     for payload in ({}, {"tool_response": "x"}, {"tool_response": {"answers": ["Park B3"]}}):
         assert tg.on_post_ask_user(world.run, payload) == ["AskUserQuestion payload carries no answers"]

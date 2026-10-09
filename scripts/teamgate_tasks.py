@@ -670,7 +670,8 @@ def on_post_ask_user(run: Run, payload: Payload) -> list[str]:
     answers = response.get("answers") if isinstance(response, dict) else None
     if not isinstance(answers, dict):
         return ["AskUserQuestion payload carries no answers"]
-    picks = [(q, a) for q, a in answers.items() if isinstance(q, str) and isinstance(a, str) and a.startswith(PARK_ANSWER)]
+    # A multi-select answer may join the picks in any order; a park pick anywhere in it is reported.
+    picks = [(q, a) for q, a in answers.items() if isinstance(q, str) and isinstance(a, str) and PARK_ANSWER in a]
     if not picks:
         return []
     errors: list[str] = []
@@ -680,7 +681,7 @@ def on_post_ask_user(run: Run, payload: Payload) -> list[str]:
         held = set(parked(events))
         new: list[JsonObj] = []
         for question, answer in picks:
-            root = answer[len(PARK_ANSWER):]
+            root = answer[len(PARK_ANSWER):] if answer.startswith(PARK_ANSWER) else answer
             if not PARKABLE.match(root):
                 errors.append(f"cannot park {root!r}: only T<n> and B<n> roots can be parked")
             elif not any(t.title.root == root for t in by_key.values()):
