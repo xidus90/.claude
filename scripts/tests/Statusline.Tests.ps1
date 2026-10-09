@@ -53,6 +53,23 @@ BeforeAll {
         }
     }
 
+    # Renders the real config with its peak window replaced, returning the
+    # non-empty lines.
+    function Get-RenderedWithPeakWindow {
+        param([int]$Start, [int]$End)
+
+        $body = (Get-Content $script:Config -Raw).Replace(
+            '[cship.peak_usage]', "[cship.peak_usage]`nstart_hour = $Start`nend_hour = $End")
+        $file = Join-Path ([System.IO.Path]::GetTempPath()) "cship-peak-$([guid]::NewGuid()).toml"
+        Set-Content -Path $file -Value $body -Encoding utf8
+        try {
+            $out = Get-RenderedStatusline -ConfigPath $file
+            return @($out -split "`r?`n" | Where-Object { $_.Trim() })
+        } finally {
+            Remove-Item $file -ErrorAction SilentlyContinue
+        }
+    }
+
     $script:Rendered = Get-RenderedStatusline
     $script:Lines    = @($script:Rendered -split "`r?`n" | Where-Object { $_.Trim() })
 }
@@ -113,8 +130,24 @@ lines = ["$cship.cost", "$cship.model"]' | Should -Be 2
         It 'shows a context bar percentage' {
             $script:Lines[1] | Should -Match '%'
         }
-        It 'shows the peak usage marker' {
-            $script:Lines[1] | Should -Match 'Peak'
+        # cship decides peak from the system clock alone (Mon-Fri 07-17 US
+        # Pacific, cship 1.8.0 src/modules/peak_usage.rs) and accepts no time
+        # input, so against the real window this test passed or failed with the
+        # hour. The window is the only knob: widening it to the whole day makes
+        # the outcome depend on the Pacific weekday only, which the test computes
+        # itself; narrowing it to nothing must always hide the slot.
+        It 'shows the peak usage marker on a Pacific weekday when the window spans the day' {
+            $pacificDay = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
+                [DateTime]::UtcNow, 'Pacific Standard Time').DayOfWeek
+            # ponytail: a render straddling Pacific midnight between Fri and Sat
+            # can disagree with this day; rerun if it ever flakes at 09:00 Berlin.
+            $isWeekday = $pacificDay -notin 'Saturday', 'Sunday'
+            $line = (Get-RenderedWithPeakWindow -Start 0 -End 24)[1]
+            ($line -match 'Peak') | Should -Be $isWeekday
+        }
+        It 'hides the peak usage marker when the window is empty' {
+            $line = (Get-RenderedWithPeakWindow -Start 3 -End 3)[1]
+            $line | Should -Not -Match 'Peak'
         }
         It 'shows the Claude Code version from the cached file' {
             $script:Lines[1] | Should -Match ([regex]::Escape("v$script:Version"))
