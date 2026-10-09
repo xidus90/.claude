@@ -110,14 +110,13 @@ const rgb = (hex: string): number => Number.parseInt(hex.slice(1), 16)
 // Every second column and row of the 30×28 grid, two sampled rows per terminal row.
 export function crabRaster(costume: string): { columns: number; rows: number; cells: string } {
   const grid = pixelGrid(spriteOf(costume))
-  const at = (y: number, x: number): string | null => (grid[y] as (string | null)[])[x] as string | null
   const columns = GRID_W / 2
   const rows = GRID_H / 4
   const words: number[] = []
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < columns; c++) {
-      const top = at(r * 4, c * 2)
-      const bottom = at(r * 4 + 2, c * 2)
+      const top = grid[r * 4]?.[c * 2] ?? null
+      const bottom = grid[r * 4 + 2]?.[c * 2] ?? null
       if (top && bottom) words.push(UPPER, rgb(top), rgb(bottom))
       else if (top) words.push(UPPER, rgb(top), DEFAULT_COLOR)
       else if (bottom) words.push(LOWER, rgb(bottom), DEFAULT_COLOR)
