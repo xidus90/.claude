@@ -29,6 +29,22 @@ test('measures the teammate gap from the last teammate, not the first', () => {
   assert.deepEqual(run([[0, true], [500 * S, true], [900 * S, true]]), [true, false, false])
 })
 
+test('a plain spawn between two teammates keeps the gap running', () => {
+  assert.deepEqual(run([[0, true], [100 * S, false], [200 * S, true]]), [true, false, false])
+})
+
+test('opens again for a teammate 600.5 s after the last one', () => {
+  assert.deepEqual(run([[0, true], [600_500, true]]), [true, true])
+})
+
+test('counts teammate spawns towards the swarm', () => {
+  assert.deepEqual(run([[0, true], [5 * S, true], [10 * S, true]]), [true, false, true])
+})
+
+test('does not open for three spawns spread over 30.5 s', () => {
+  assert.deepEqual(run([[0, false], [15 * S, false], [30_500, false]]), [false, false, false])
+})
+
 test('opens on the third spawn within thirty seconds', () => {
   assert.deepEqual(run([[0, false], [10 * S, false], [29 * S, false]]), [false, false, true])
 })
