@@ -102,6 +102,9 @@ test('marks unpriced agents with ? and names how many the total leaves out', () 
   const v = buildView(input(plain([lead({ costUsd: 1 }), agent({ id: 'q', unpriced: true, costUsd: 0.2 })])))
   assert.equal(v.groups[1]?.rows[0]?.cost, '?')
   assert.match(v.totals, /^≈ \$1\.20 .* ohne 1 Agents$/)
+  assert.equal(v.overview.unpriced, 'ohne 1 Agents')
+  assert.equal(v.overview.line, '≈ $1.20 · 6k · 10:00 · ohne 1 Agents')
+  assert.equal(buildView(input(plain([lead({ costUsd: 1 })]))).overview.unpriced, '')
 })
 
 test('reconciles the reported cost with the right sum, and warns above 10 %', () => {
@@ -123,7 +126,7 @@ test('lists script errors, unreadable lines and problems as notices', () => {
 test('says it is loading before the first summary, and shows only the error if that failed', () => {
   assert.deepEqual(buildView(input(null)), {
     title: 'Agents', totals: 'lade …', counts: '', notices: [], groups: [], status: { running: 0, done: 0, failed: 0, aborted: 0 },
-    overview: { cost: '≈ $0.00', tokens: '0', time: '0:00', shares: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, amounts: { input: '0', output: '0', cacheRead: '0', cacheWrite: '0' }, line: '' },
+    overview: { cost: '≈ $0.00', tokens: '0', time: '0:00', shares: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, amounts: { input: '0', output: '0', cacheRead: '0', cacheWrite: '0' }, line: '', unpriced: '' },
   })
   assert.deepEqual(buildView(input(null, { error: 'node nicht gefunden: x' })).notices, ['⚠ node nicht gefunden: x'])
 })

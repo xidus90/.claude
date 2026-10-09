@@ -1,17 +1,14 @@
 import type { ElementTable, EngineInterface, Register } from 'claude-code'
 import type { Summary } from '../shared/summary.ts'
-import { blockBar, costBarSvg, crabRaster, crabSvg, paletteOf, STATUS_COLOR, statusSvg, stripeSvg, tilesSvg, tokenColors, type Palette } from './art.ts'
+import { blockBar, CARD_GAP, costBarSvg, costParts, crabRaster, crabSvg, layoutOf, paletteOf, STATUS_COLOR, statusParts, statusSvg, stripeSvg, tilesSvg, tokenParts, type BarPart, type Palette } from './art.ts'
 import { EMPTY_LOG, onSpawn, type SpawnLog } from './open.ts'
 import { costumeOf } from './sprites.ts'
-import { buildView, countsLine, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, statusLine, visibleRows, type Group, type LiveAgent, type Row, type Shares, type View } from './view.ts'
+import { buildView, countsLine, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, statusLine, visibleRows, type Group, type LiveAgent, type Row, type View } from './view.ts'
 
 const PANE = 'agent-panel'
 // Measured in docs/.superpowers/smoke/2026-10-09-agent-panel-probe.md.
 const TICK_MS = 2000
 const REPORTED_COST_INCLUDES_AGENTS = true
-// Crabs need this many columns beside the rows.
-const WIDE_COLUMNS = 70
-const COST_COLOR = '#8f8cf4'
 
 let summary: Summary | null = null
 let error = ''
@@ -42,7 +39,7 @@ async function refresh($: EngineInterface): Promise<void> {
   if (!hasOpened || isBusy) return
   isBusy = true
   try {
-    if (!isOpen(await $.ui.panes(), PANE)) return
+    if (!(await isShown($))) return
     await readTheme($)
     const session = await $.session.id()
     const cwd = await $.session.cwd()
@@ -72,16 +69,14 @@ async function openPane($: EngineInterface, byUser: boolean): Promise<void> {
   void refresh($)
 }
 
-// A pane listing that fails counts as no pane shown, so a spawn can still open it.
+// A pane listing that fails leaves what is known: a pane this session opened counts as still shown.
 async function isShown($: EngineInterface): Promise<boolean> {
   try {
     return isOpen(await $.ui.panes(), PANE)
   } catch {
-    return false
+    return hasOpened
   }
 }
-
-const total = (v: View): number => v.status.running + v.status.done + v.status.failed + v.status.aborted
 
 // The plain text drawing, for when the graphic one cannot be built.
 function textTree({ Box, Text, Button }: TextUi, v: View, redraw: () => void) {
@@ -167,15 +162,10 @@ export const register: Register = (on) => {
     const redraw = () => $.ui.invalidate('ui.render')
     try {
       // The terminal draws cells and rasters; every other surface draws SVG, which has no key of its own.
-      const isWide = (e.props.bodyColumns ?? 0) >= WIDE_COLUMNS
-      const cols = Math.max(10, (e.props.bodyColumns ?? 40) - 4)
-      const bar = (key: string, parts: { share: number; color: string }[], svg: string) => e.surface === 'terminal'
-        ? Box({ key, flexDirection: 'row', children: blockBar(parts, cols, palette.track).map((s) => Text({ color: s.color, children: [s.text] })) })
+      const { isWide, barCells, cardBarCells } = layoutOf(e.props.bodyColumns)
+      const bar = (key: string, parts: BarPart[], svg: string, cells: number) => e.surface === 'terminal'
+        ? Box({ key, flexDirection: 'row', children: blockBar(parts, cells, palette.track).map((s) => Text({ color: s.color, children: [s.text] })) })
         : Box({ key, children: [$.ui.resolve(e).Svg({ source: svg, alt: key })] })
-      const shareParts = (s: Shares) => {
-        const c = tokenColors(palette)
-        return [{ share: s.input, color: c.input }, { share: s.output, color: c.output }, { share: s.cacheRead, color: c.cacheRead }, { share: s.cacheWrite, color: c.cacheWrite }]
-      }
       const crab = (g: Group) => e.surface === 'terminal'
         ? $.ui.resolve(e).Raster({ key: `crab-${g.role}`, ...crabRaster(costumeOf(g.role)) })
         : Box({ key: `crab-${g.role}`, children: [$.ui.resolve(e).Svg({ source: crabSvg(costumeOf(g.role), g.isRunning), alt: `Krabbe ${g.title}` })] })
@@ -185,7 +175,7 @@ export const register: Register = (on) => {
           Button({ key: `r-${r.key}`, plain: true, label: r.label, onPress: () => { toggle(expanded, r.key); redraw() } }),
           Text({ dimColor: true, wrap: 'truncate-end', children: [`  ${r.meta}`] }),
         ] }),
-        bar(`stripe-${r.key}`, shareParts(r.shares), stripeSvg(palette, r.shares, 6)),
+        bar(`stripe-${r.key}`, tokenParts(palette, r.shares), stripeSvg(palette, r.shares, 6), cardBarCells),
         ...(expanded.has(r.key) ? [Text({ dimColor: true, children: [detailLine(r)] })] : []),
       ]
       const group = (g: Group) => {
@@ -195,9 +185,9 @@ export const register: Register = (on) => {
             Button({ key: `g-${g.key}`, plain: true, label: `${isGroupOpen ? '▾' : '▸'} ${g.title}  ${countsLine(g.counts)}`, onPress: () => { toggle(collapsed, g.key); redraw() } }),
             Text({ bold: true, children: [g.cost] }),
           ] }),
-          ...(isGroupOpen ? [bar(`cost-${g.key}`, [{ share: g.costShare, color: COST_COLOR }], costBarSvg(palette, g.costShare)), ...visibleRows(g, isHidingDone).flatMap(row)] : []),
+          ...(isGroupOpen ? [bar(`cost-${g.key}`, costParts(g.costShare), costBarSvg(palette, g.costShare), cardBarCells), ...visibleRows(g, isHidingDone).flatMap(row)] : []),
         ]
-        return Box({ key: `card-${g.key}`, flexDirection: 'row', borderStyle: 'round', paddingX: 1, columnGap: 1, children: [
+        return Box({ key: `card-${g.key}`, flexDirection: 'row', borderStyle: 'round', paddingX: 1, columnGap: CARD_GAP, children: [
           ...(isWide ? [crab(g)] : []),
           Box({ flexDirection: 'column', flexGrow: 1, children: body }),
         ] })
@@ -210,7 +200,8 @@ export const register: Register = (on) => {
           e.surface === 'terminal'
             ? Text({ bold: true, children: [`Kosten ${v.overview.cost} · Tokens ${v.overview.tokens} · Zeit ${v.overview.time}`] })
             : Box({ key: 'svg-tiles', children: [$.ui.resolve(e).Svg({ source: tilesSvg(palette, [{ label: 'Kosten', value: v.overview.cost }, { label: 'Tokens', value: v.overview.tokens }, { label: 'Zeit', value: v.overview.time }]), alt: v.overview.line })] }),
-          bar('stripe-total', shareParts(v.overview.shares), stripeSvg(palette, v.overview.shares, 10)),
+          ...(v.overview.unpriced ? [Text({ color: 'warning', children: [v.overview.unpriced] })] : []),
+          bar('stripe-total', tokenParts(palette, v.overview.shares), stripeSvg(palette, v.overview.shares, 10), barCells),
           Text({ dimColor: true, children: [`in ${v.overview.amounts.input} · out ${v.overview.amounts.output} · cache read ${v.overview.amounts.cacheRead} · cache write ${v.overview.amounts.cacheWrite}`] }),
         ] : []),
         Box({ flexDirection: 'row', justifyContent: 'space-between', children: [
@@ -222,7 +213,7 @@ export const register: Register = (on) => {
           ] })] : []),
         ] }),
         ...(isAgentsOpen ? [
-          bar('status', (['running', 'done', 'failed', 'aborted'] as const).map((k) => ({ share: total(v) > 0 ? v.status[k] / total(v) : 0, color: STATUS_COLOR[k] })), statusSvg(palette, v.status)),
+          bar('status', statusParts(v.status), statusSvg(palette, v.status), barCells),
           Text({ dimColor: true, children: [statusLine(v.status)] }),
           ...v.groups.map(group),
         ] : []),

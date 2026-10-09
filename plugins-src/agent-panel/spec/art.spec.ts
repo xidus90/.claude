@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { DARK, LIGHT, STATUS_COLOR, SVG_LIMIT, blockBar, costBarSvg, crabRaster, crabSvg, paletteOf, statusSvg, stripeSvg, tilesSvg, tokenColors } from '../hooks/art.ts'
+import { CARD_GAP, DARK, LIGHT, STATUS_COLOR, SVG_LIMIT, blockBar, costBarSvg, costParts, crabRaster, crabSvg, layoutOf, paletteOf, statusParts, statusSvg, stripeSvg, tilesSvg, tokenColors, tokenParts } from '../hooks/art.ts'
 
 const shares = { input: 0.1, output: 0.2, cacheRead: 0.6, cacheWrite: 0.1 }
 
@@ -51,6 +51,38 @@ test('draws only the track for a cost share that is not a finite number', () => 
     assert.equal(costFill(svg), null, String(share))
     assert.ok(!svg.includes('NaN') && !svg.includes('Infinity'), String(share))
   }
+})
+
+test('splits token shares into bar parts in the order of the token colours', () => {
+  const c = tokenColors(LIGHT)
+  assert.deepEqual(tokenParts(LIGHT, shares), [
+    { share: 0.1, color: c.input }, { share: 0.2, color: c.output }, { share: 0.6, color: c.cacheRead }, { share: 0.1, color: c.cacheWrite },
+  ])
+})
+
+test('splits status counts into bar parts, all empty for no agents', () => {
+  assert.deepEqual(statusParts({ running: 1, done: 2, failed: 1, aborted: 0 }), [
+    { share: 0.25, color: STATUS_COLOR.running }, { share: 0.5, color: STATUS_COLOR.done },
+    { share: 0.25, color: STATUS_COLOR.failed }, { share: 0, color: STATUS_COLOR.aborted },
+  ])
+  assert.deepEqual(statusParts({ running: 0, done: 0, failed: 0, aborted: 0 }).map((p) => p.share), [0, 0, 0, 0])
+})
+
+test('makes one cost bar part, clamped to 0..1 and empty for a share that is not finite', () => {
+  assert.deepEqual(costParts(0.4), [{ share: 0.4, color: '#8f8cf4' }])
+  assert.equal(costParts(2)[0]?.share, 1)
+  assert.equal(costParts(-1)[0]?.share, 0)
+  assert.equal(costParts(Number.NaN)[0]?.share, 0)
+})
+
+test('sizes the bars to the terminal cells the pane and its crab card leave', () => {
+  assert.deepEqual(layoutOf(80), { isWide: true, barCells: 76, cardBarCells: 60 })
+  // The 80 columns hold the card's border and padding (4), the crab raster, the gap and the bar.
+  assert.equal(layoutOf(80).cardBarCells + 4 + crabRaster('plain').columns + CARD_GAP, 80)
+  assert.deepEqual(layoutOf(70), { isWide: true, barCells: 66, cardBarCells: 50 })
+  assert.deepEqual(layoutOf(69), { isWide: false, barCells: 65, cardBarCells: 65 })
+  assert.deepEqual(layoutOf(undefined), { isWide: false, barCells: 36, cardBarCells: 36 })
+  assert.equal(layoutOf(8).barCells, 10)
 })
 
 test('animates a running crab only, and honours reduced motion', () => {

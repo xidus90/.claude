@@ -19,6 +19,35 @@ export function paletteOf(theme: unknown): Palette {
   return typeof theme === 'string' && theme.includes('dark') ? DARK : LIGHT
 }
 
+export type BarPart = { share: number; color: string }
+
+export const tokenParts = (p: Palette, s: Shares): BarPart[] => {
+  const c = tokenColors(p)
+  return [{ share: s.input, color: c.input }, { share: s.output, color: c.output }, { share: s.cacheRead, color: c.cacheRead }, { share: s.cacheWrite, color: c.cacheWrite }]
+}
+
+export function statusParts(c: StatusCounts): BarPart[] {
+  const total = c.running + c.done + c.failed + c.aborted
+  const order: Status[] = ['running', 'done', 'failed', 'aborted']
+  return order.map((k) => ({ share: total > 0 ? c[k] / total : 0, color: STATUS_COLOR[k] }))
+}
+
+export const costParts = (share: number): BarPart[] => [{ share: Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 0, color: COST_COLOR }]
+
+// A terminal pane at least this many columns wide draws a crab beside each role.
+export const WIDE_COLUMNS = 70
+export const CRAB_COLUMNS = GRID_W / 2
+export const CARD_GAP = 1
+// The role card's round border and its padding of one cell on each side.
+const CARD_FRAME = 4
+
+// Cells for the bars: those across the pane, and those inside a card, which lose the crab and its gap.
+export function layoutOf(bodyColumns: number | undefined): { isWide: boolean; barCells: number; cardBarCells: number } {
+  const isWide = (bodyColumns ?? 0) >= WIDE_COLUMNS
+  const barCells = Math.max(10, (bodyColumns ?? 40) - CARD_FRAME)
+  return { isWide, barCells, cardBarCells: Math.max(10, barCells - (isWide ? CRAB_COLUMNS + CARD_GAP : 0)) }
+}
+
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 
 const doc = (w: number, h: number, body: string): string =>
@@ -39,7 +68,7 @@ export function tilesSvg(p: Palette, tiles: { label: string; value: string }[]):
 }
 
 // Segments laid end to end over a rounded track; empty segments draw nothing.
-function segments(parts: { share: number; color: string }[], height: number, track: string): string {
+function segments(parts: BarPart[], height: number, track: string): string {
   let x = 0
   let body = `<rect x="0" y="0" width="${SVG_W}" height="${height}" rx="${height / 2}" fill="${track}"/>`
   for (const part of parts) {
@@ -52,23 +81,15 @@ function segments(parts: { share: number; color: string }[], height: number, tra
 }
 
 export function stripeSvg(p: Palette, s: Shares, height: number): string {
-  const c = tokenColors(p)
-  return doc(SVG_W, height, segments([
-    { share: s.input, color: c.input }, { share: s.output, color: c.output },
-    { share: s.cacheRead, color: c.cacheRead }, { share: s.cacheWrite, color: c.cacheWrite },
-  ], height, p.track))
+  return doc(SVG_W, height, segments(tokenParts(p, s), height, p.track))
 }
 
 export function statusSvg(p: Palette, c: StatusCounts): string {
-  const total = c.running + c.done + c.failed + c.aborted
-  const order: Status[] = ['running', 'done', 'failed', 'aborted']
-  const parts = order.map((k) => ({ share: total > 0 ? c[k] / total : 0, color: STATUS_COLOR[k] }))
-  return doc(SVG_W, 10, segments(parts, 10, p.track))
+  return doc(SVG_W, 10, segments(statusParts(c), 10, p.track))
 }
 
 export function costBarSvg(p: Palette, share: number): string {
-  const s = Number.isFinite(share) ? Math.min(1, Math.max(0, share)) : 0
-  return doc(SVG_W, 5, segments([{ share: s, color: COST_COLOR }], 5, p.track))
+  return doc(SVG_W, 5, segments(costParts(share), 5, p.track))
 }
 
 // Pure CSS, run by the compositor: a running crab lifts its two leg groups in turn.
@@ -87,7 +108,7 @@ export function crabSvg(costume: string, isRunning: boolean): string {
 
 export type Segment = { text: string; color: string }
 
-export function blockBar(parts: { share: number; color: string }[], width: number, track: string): Segment[] {
+export function blockBar(parts: BarPart[], width: number, track: string): Segment[] {
   const out: Segment[] = []
   let used = 0
   for (const part of parts) {
@@ -110,7 +131,7 @@ const rgb = (hex: string): number => Number.parseInt(hex.slice(1), 16)
 // Every second column and row of the 30×28 grid, two sampled rows per terminal row.
 export function crabRaster(costume: string): { columns: number; rows: number; cells: string } {
   const grid = pixelGrid(spriteOf(costume))
-  const columns = GRID_W / 2
+  const columns = CRAB_COLUMNS
   const rows = GRID_H / 4
   const words: number[] = []
   for (let r = 0; r < rows; r++) {

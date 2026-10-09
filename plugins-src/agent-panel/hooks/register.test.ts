@@ -1,4 +1,5 @@
 import { expect, mock, test } from 'claude-code/testing'
+import { DARK, LIGHT } from './art.ts'
 
 const PANE = {
   plugin: 'agent-panel',
@@ -16,6 +17,9 @@ const LEAD = {
 const GOOD = JSON.stringify({ runId: null, generations: ['s1'], agents: [LEAD], unreadableLines: 0, problems: [] })
 const AGENT = { ...LEAD, id: 'a1', kind: 'agent', name: 'impl-T1', role: 'implementer-backend', task: 'impl T1', model: 'claude-sonnet-5-5', effort: 'medium' }
 const TEAM = JSON.stringify({ runId: 'r1', generations: ['s1'], agents: [LEAD, AGENT], unreadableLines: 0, problems: [] })
+const UNPRICED = JSON.stringify({ runId: 'r1', generations: ['s1'], agents: [LEAD, { ...AGENT, model: 'x-unknown', costUsd: 0, unpriced: true }], unreadableLines: 0, problems: [] })
+// Terminal cells a keyed element draws: the glyphs of its text.
+const cellsOf = (el: { text: string } | undefined): number => [...(el?.text ?? '')].length
 const WIDE = (surface: 'terminal' | 'desktop') => ({ ...PANE, surface, props: { ...PANE.props, bodyColumns: 80 } })
 const NARROW = (surface: 'terminal' | 'desktop') => ({ ...PANE, surface, props: { ...PANE.props, bodyColumns: 50 } })
 
@@ -210,6 +214,9 @@ test('the desktop draws SVG pieces and a crab per role when wide', async ($, on)
   expect(await ui.find({ key: 'svg-tiles' })).toBeDefined()
   expect(await ui.find({ key: 'crab-implementer-backend' })).toBeDefined()
   expect(await ui.find({ type: 'Svg' })).toBeDefined()
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn.includes(DARK.tile)).toBe(true)
+  expect(drawn.includes(LIGHT.tile)).toBe(false)
   await ui.unmount()
   const narrow = await $.ui.mount(NARROW('desktop'))
   expect(await narrow.find({ key: 'crab-implementer-backend' })).toBeUndefined()
@@ -244,6 +251,53 @@ test('the section buttons fold the overview and the agents, and hide finished ro
   expect(await ui.find({ key: 'r-a1' })).toBeUndefined()
   await ui.press({ key: 'sec-agents' })
   expect(await ui.find({ key: 'g-implementer-backend' })).toBeUndefined()
+})
+
+test('the terminal bars fit the card body beside the crab', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(WIDE('terminal'))
+  const card = await ui.find({ key: 'card-implementer-backend' })
+  const crab = await ui.find({ key: 'crab-implementer-backend' })
+  // 80 columns less the card's border and padding, the crab and the gap beside it.
+  const room = 80 - 2 - 2 * Number(card?.props.paddingX) - Number(crab?.props.columns) - Number(card?.props.columnGap)
+  expect(cellsOf(await ui.find({ key: 'cost-implementer-backend' }))).toBe(room)
+  expect(cellsOf(await ui.find({ key: 'stripe-a1' }))).toBe(room)
+})
+
+test('an unpriced agent is named beside the totals on both surfaces', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: UNPRICED, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const terminal = await $.ui.mount(NARROW('terminal'))
+  expect(await terminal.find({ type: 'Text', text: 'ohne 1 Agents' })).toBeDefined()
+  await terminal.unmount()
+  const desktop = await $.ui.mount(NARROW('desktop'))
+  expect(await desktop.find({ type: 'Text', text: 'ohne 1 Agents' })).toBeDefined()
+})
+
+test('fold all and unfold all close and open every group', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(NARROW('terminal'))
+  await ui.press({ key: 'fold-all' })
+  expect(await ui.find({ key: 'r-a1' })).toBeUndefined()
+  expect(await ui.find({ key: 'r-lead:s1' })).toBeUndefined()
+  expect(await ui.find({ key: 'g-implementer-backend' })).toBeDefined()
+  await ui.press({ key: 'open-all' })
+  expect(await ui.find({ key: 'r-a1' })).toBeDefined()
+  expect(await ui.find({ key: 'r-lead:s1' })).toBeDefined()
 })
 
 test('a new team run reopens the panel after it was closed', async ($, on) => {
@@ -284,6 +338,31 @@ test('a denied pane listing still lets the first spawn open the pane', async ($,
   expect(opened).toEqual(['agent-panel'])
 })
 
+test('a denied pane listing still loads the summary into the pane the spawn opened', async ($, on) => {
+  const clock = mock.clock(on)
+  const runs: string[][] = []
+  stub(on, runs, () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [], '', () => true)
+  on('config.list', () => ({ value: [] }))
+  on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }))
+  await $.session.start(START)
+  await $.agent.spawn({ subagentType: 'implementer-backend', description: 'x', prompt: 'x', isTeammate: true })
+  await clock.advance(2000)
+  expect(runs.length).toBeGreaterThan(0)
+  const ui = await $.ui.mount(NARROW('terminal'))
+  expect(await ui.find({ type: 'Text', text: /^Kosten ≈ \$0\.05/ })).toBeDefined()
+})
+
+test('a denied pane listing does not reopen the pane on every spawn of a swarm', async ($, on) => {
+  mock.clock(on)
+  const opened: string[] = []
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), opened, [], [], '', () => true)
+  on('config.list', () => ({ value: [] }))
+  on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }))
+  await $.session.start(START)
+  for (let i = 0; i < 4; i++) await $.agent.spawn({ subagentType: 'verifier', description: 'x', prompt: 'x' })
+  expect(opened).toEqual(['agent-panel'])
+})
+
 test('a failed theme read falls back to the light palette and still draws', async ($, on) => {
   const clock = mock.clock(on)
   stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
@@ -294,4 +373,7 @@ test('a failed theme read falls back to the light palette and still draws', asyn
   const ui = await $.ui.mount(WIDE('desktop'))
   // A failed theme read falls back to light and still draws.
   expect(await ui.find({ key: 'svg-tiles' })).toBeDefined()
+  const drawn = JSON.stringify(await ui.drawn())
+  expect(drawn.includes(LIGHT.tile)).toBe(true)
+  expect(drawn.includes(DARK.tile)).toBe(false)
 })

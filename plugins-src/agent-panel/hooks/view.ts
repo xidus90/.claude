@@ -12,6 +12,8 @@ export type Overview = {
   shares: Shares
   amounts: { input: string; output: string; cacheRead: string; cacheWrite: string }
   line: string
+  // What the cost leaves out, as a line of its own; empty when every agent is priced.
+  unpriced: string
 }
 export type Row = { key: string; glyph: Glyph; status: Status; label: string; model: string; effort: string; cost: string; tokens: string; time: string; note: string; detail: string; shares: Shares; meta: string }
 export type Group = { key: string; role: string; title: string; cost: string; tokens: string; time: string; costUsd: number; costShare: number; isRunning: boolean; counts: StatusCounts; rows: Row[] }
@@ -51,7 +53,7 @@ const noShares = (): Shares => ({ input: 0, output: 0, cacheRead: 0, cacheWrite:
 
 const emptyOverview = (): Overview => ({
   cost: '≈ $0.00', tokens: '0', time: '0:00', shares: noShares(),
-  amounts: { input: '0', output: '0', cacheRead: '0', cacheWrite: '0' }, line: '',
+  amounts: { input: '0', output: '0', cacheRead: '0', cacheWrite: '0' }, line: '', unpriced: '',
 })
 
 export function sharesOf(t: TokenCounts): Shares {
@@ -208,6 +210,7 @@ export function buildView(input: ViewInput): View {
     shares: sharesOf(sum),
     amounts: { input: fmtTokens(sum.input), output: fmtTokens(sum.output), cacheRead: fmtTokens(sum.cacheRead), cacheWrite: fmtTokens(sum.cacheWrite5m + sum.cacheWrite1h) },
     line: `≈ ${fmtCost(total)} · ${fmtTokens(tokens)} · ${fmtTime(wall)}${unpriced ? ` · ohne ${unpriced} Agents` : ''}`,
+    unpriced: unpriced ? `ohne ${unpriced} Agents` : '',
   }
 
   const gens = s.generations.length
