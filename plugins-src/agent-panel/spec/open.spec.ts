@@ -25,6 +25,10 @@ test('a plain spawn does not restart the teammate gap', () => {
   assert.deepEqual(run([[0, true], [300 * S, false], [700 * S, true]]), [true, false, true])
 })
 
+test('measures the teammate gap from the last teammate, not the first', () => {
+  assert.deepEqual(run([[0, true], [500 * S, true], [900 * S, true]]), [true, false, false])
+})
+
 test('opens on the third spawn within thirty seconds', () => {
   assert.deepEqual(run([[0, false], [10 * S, false], [29 * S, false]]), [false, false, true])
 })
