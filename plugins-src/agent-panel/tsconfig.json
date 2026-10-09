@@ -14,5 +14,6 @@
     "types": ["node", "claude-code", "claude-code-tools", "claude-code-mcp"],
     "skipLibCheck": true
   },
-  "include": ["cli", "hooks", "shared", "spec", ".claude-plugin/types"]
+  "include": ["cli", "hooks", "shared", "spec", ".claude-plugin/types"],
+  "exclude": ["hooks/*.test.ts"]
 }
