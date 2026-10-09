@@ -1,6 +1,6 @@
 {
   "name": "agent-panel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Side panel with cost, tokens, time and status of every agent the session spawned, across the generations of an agent-team run",
   "author": { "name": "Christoph Wübbels" }
 }
