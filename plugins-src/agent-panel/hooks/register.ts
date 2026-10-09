@@ -1,11 +1,17 @@
-import type { EngineInterface, Register } from 'claude-code'
+import type { ElementTable, EngineInterface, Register } from 'claude-code'
 import type { Summary } from '../shared/summary.ts'
-import { buildView, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, type LiveAgent } from './view.ts'
+import { blockBar, costBarSvg, crabRaster, crabSvg, paletteOf, STATUS_COLOR, statusSvg, stripeSvg, tilesSvg, tokenColors, type Palette } from './art.ts'
+import { EMPTY_LOG, onSpawn, type SpawnLog } from './open.ts'
+import { costumeOf } from './sprites.ts'
+import { buildView, countsLine, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, statusLine, visibleRows, type Group, type LiveAgent, type Row, type Shares, type View } from './view.ts'
 
 const PANE = 'agent-panel'
 // Measured in docs/.superpowers/smoke/2026-10-09-agent-panel-probe.md.
 const TICK_MS = 2000
 const REPORTED_COST_INCLUDES_AGENTS = true
+// Crabs need this many columns beside the rows.
+const WIDE_COLUMNS = 70
+const COST_COLOR = '#8f8cf4'
 
 let summary: Summary | null = null
 let error = ''
@@ -13,8 +19,23 @@ let live: LiveAgent[] = []
 let reported: number | null = null
 let isBusy = false
 let hasOpened = false
+let palette: Palette = paletteOf(undefined)
+let spawnLog: SpawnLog = EMPTY_LOG
+let isOverviewOpen = true
+let isAgentsOpen = true
+let isHidingDone = false
 const collapsed = new Set<string>()
 const expanded = new Set<string>()
+
+type TextUi = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
+
+async function readTheme($: EngineInterface): Promise<void> {
+  try {
+    palette = paletteOf((await $.config.list()).find((row) => row.key === 'theme')?.value)
+  } catch {
+    palette = paletteOf(undefined)
+  }
+}
 
 async function refresh($: EngineInterface): Promise<void> {
   // A session that never showed the panel never pays for a node start.
@@ -22,6 +43,7 @@ async function refresh($: EngineInterface): Promise<void> {
   isBusy = true
   try {
     if (!isOpen(await $.ui.panes(), PANE)) return
+    await readTheme($)
     const session = await $.session.id()
     const cwd = await $.session.cwd()
     const { home, tmp } = dirsOf({
@@ -50,8 +72,55 @@ async function openPane($: EngineInterface, byUser: boolean): Promise<void> {
   void refresh($)
 }
 
+const total = (v: View): number => v.status.running + v.status.done + v.status.failed + v.status.aborted
+
+// The plain text drawing, for when the graphic one cannot be built.
+function textTree({ Box, Text, Button }: TextUi, v: View, redraw: () => void) {
+  return Box({
+    flexDirection: 'column',
+    children: [
+      Text({ bold: true, wrap: 'truncate-end', children: [v.title] }),
+      Text({ wrap: 'truncate-end', children: [v.totals] }),
+      Text({ dimColor: true, children: [v.counts] }),
+      ...v.notices.map((n) => Text({ color: 'yellow', wrap: 'truncate-end', children: [n] })),
+      ...v.groups.flatMap((g) => [
+        Button({
+          key: `g-${g.key}`,
+          plain: true,
+          label: groupLine(g, collapsed.has(g.key)),
+          onPress: () => {
+            toggle(collapsed, g.key)
+            redraw()
+          },
+        }),
+        ...(collapsed.has(g.key)
+          ? []
+          : g.rows.flatMap((r) => [
+              Box({
+                flexDirection: 'row',
+                children: [
+                  Text({ color: glyphColor(r.glyph), children: [`  ${r.glyph} `] }),
+                  Button({
+                    key: `r-${r.key}`,
+                    plain: true,
+                    label: rowLine(r),
+                    onPress: () => {
+                      toggle(expanded, r.key)
+                      redraw()
+                    },
+                  }),
+                ],
+              }),
+              ...(expanded.has(r.key) ? [Text({ dimColor: true, children: [detailLine(r)] })] : []),
+            ])),
+      ]),
+    ],
+  })
+}
+
 export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
+    await readTheme($)
     $.clock.every(TICK_MS, () => refresh($))
     await $.command.register({
       name: 'agent-panel',
@@ -70,7 +139,10 @@ export const register: Register = (on) => {
   on('agent.spawn', async ($, e, next) => {
     const started = await next(e)
     if (started.deny !== undefined) return started
-    if (!hasOpened) await openPane($, false)
+    const decision = onSpawn(spawnLog, await $.clock.now(), e.isTeammate === true)
+    spawnLog = decision.log
+    const isShown = isOpen(await $.ui.panes(), PANE)
+    if (!isShown && (!hasOpened || decision.shouldOpen)) await openPane($, false)
     else void refresh($)
     return started
   })
@@ -84,45 +156,74 @@ export const register: Register = (on) => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const v = buildView({ summary, live, reportedCostUsd: reported, costIncludesAgents: REPORTED_COST_INCLUDES_AGENTS, now: await $.clock.now(), error })
-    return Box({
-      flexDirection: 'column',
-      children: [
+    const redraw = () => $.ui.invalidate('ui.render')
+    try {
+      // The terminal draws cells and rasters; every other surface draws SVG, which has no key of its own.
+      const isWide = (e.props.bodyColumns ?? 0) >= WIDE_COLUMNS
+      const cols = Math.max(10, (e.props.bodyColumns ?? 40) - 4)
+      const bar = (key: string, parts: { share: number; color: string }[], svg: string) => e.surface === 'terminal'
+        ? Box({ key, flexDirection: 'row', children: blockBar(parts, cols, palette.track).map((s) => Text({ color: s.color, children: [s.text] })) })
+        : Box({ key, children: [$.ui.resolve(e).Svg({ source: svg, alt: key })] })
+      const shareParts = (s: Shares) => {
+        const c = tokenColors(palette)
+        return [{ share: s.input, color: c.input }, { share: s.output, color: c.output }, { share: s.cacheRead, color: c.cacheRead }, { share: s.cacheWrite, color: c.cacheWrite }]
+      }
+      const crab = (g: Group) => e.surface === 'terminal'
+        ? $.ui.resolve(e).Raster({ key: `crab-${g.role}`, ...crabRaster(costumeOf(g.role)) })
+        : Box({ key: `crab-${g.role}`, children: [$.ui.resolve(e).Svg({ source: crabSvg(costumeOf(g.role), g.isRunning), alt: `Krabbe ${g.title}` })] })
+      const row = (r: Row) => [
+        Box({ flexDirection: 'row', children: [
+          Text({ color: STATUS_COLOR[r.status], children: [`${r.glyph} `] }),
+          Button({ key: `r-${r.key}`, plain: true, label: r.label, onPress: () => { toggle(expanded, r.key); redraw() } }),
+          Text({ dimColor: true, wrap: 'truncate-end', children: [`  ${r.meta}`] }),
+        ] }),
+        bar(`stripe-${r.key}`, shareParts(r.shares), stripeSvg(palette, r.shares, 6)),
+        ...(expanded.has(r.key) ? [Text({ dimColor: true, children: [detailLine(r)] })] : []),
+      ]
+      const group = (g: Group) => {
+        const isGroupOpen = !collapsed.has(g.key)
+        const body = [
+          Box({ flexDirection: 'row', justifyContent: 'space-between', children: [
+            Button({ key: `g-${g.key}`, plain: true, label: `${isGroupOpen ? '▾' : '▸'} ${g.title}  ${countsLine(g.counts)}`, onPress: () => { toggle(collapsed, g.key); redraw() } }),
+            Text({ bold: true, children: [g.cost] }),
+          ] }),
+          ...(isGroupOpen ? [bar(`cost-${g.key}`, [{ share: g.costShare, color: COST_COLOR }], costBarSvg(palette, g.costShare)), ...visibleRows(g, isHidingDone).flatMap(row)] : []),
+        ]
+        return Box({ key: `card-${g.key}`, flexDirection: 'row', borderStyle: 'round', paddingX: 1, columnGap: 1, children: [
+          ...(isWide ? [crab(g)] : []),
+          Box({ flexDirection: 'column', flexGrow: 1, children: body }),
+        ] })
+      }
+      return Box({ flexDirection: 'column', children: [
         Text({ bold: true, wrap: 'truncate-end', children: [v.title] }),
-        Text({ wrap: 'truncate-end', children: [v.totals] }),
-        Text({ dimColor: true, children: [v.counts] }),
-        ...v.notices.map((n) => Text({ color: 'yellow', wrap: 'truncate-end', children: [n] })),
-        ...v.groups.flatMap((g) => [
-          Button({
-            key: `g-${g.key}`,
-            plain: true,
-            label: groupLine(g, collapsed.has(g.key)),
-            onPress: () => {
-              toggle(collapsed, g.key)
-              $.ui.invalidate('ui.render')
-            },
-          }),
-          ...(collapsed.has(g.key)
-            ? []
-            : g.rows.flatMap((r) => [
-                Box({
-                  flexDirection: 'row',
-                  children: [
-                    Text({ color: glyphColor(r.glyph), children: [`  ${r.glyph} `] }),
-                    Button({
-                      key: `r-${r.key}`,
-                      plain: true,
-                      label: rowLine(r),
-                      onPress: () => {
-                        toggle(expanded, r.key)
-                        $.ui.invalidate('ui.render')
-                      },
-                    }),
-                  ],
-                }),
-                ...(expanded.has(r.key) ? [Text({ dimColor: true, children: [detailLine(r)] })] : []),
-              ])),
-        ]),
-      ],
-    })
+        ...v.notices.map((n) => Text({ color: 'warning', wrap: 'truncate-end', children: [n] })),
+        Button({ key: 'sec-overview', plain: true, label: `${isOverviewOpen ? '▾' : '▸'} Übersicht${isOverviewOpen ? '' : `   ${v.overview.line}`}`, onPress: () => { isOverviewOpen = !isOverviewOpen; redraw() } }),
+        ...(isOverviewOpen ? [
+          e.surface === 'terminal'
+            ? Text({ bold: true, children: [`Kosten ${v.overview.cost} · Tokens ${v.overview.tokens} · Zeit ${v.overview.time}`] })
+            : Box({ key: 'svg-tiles', children: [$.ui.resolve(e).Svg({ source: tilesSvg(palette, [{ label: 'Kosten', value: v.overview.cost }, { label: 'Tokens', value: v.overview.tokens }, { label: 'Zeit', value: v.overview.time }]), alt: v.overview.line })] }),
+          bar('stripe-total', shareParts(v.overview.shares), stripeSvg(palette, v.overview.shares, 10)),
+          Text({ dimColor: true, children: [`in ${v.overview.amounts.input} · out ${v.overview.amounts.output} · cache read ${v.overview.amounts.cacheRead} · cache write ${v.overview.amounts.cacheWrite}`] }),
+        ] : []),
+        Box({ flexDirection: 'row', justifyContent: 'space-between', children: [
+          Button({ key: 'sec-agents', plain: true, label: `${isAgentsOpen ? '▾' : '▸'} Agents${isAgentsOpen ? '' : `   ${countsLine(v.status)}`}`, onPress: () => { isAgentsOpen = !isAgentsOpen; redraw() } }),
+          ...(isAgentsOpen ? [Box({ flexDirection: 'row', columnGap: 1, children: [
+            Button({ key: 'hide-done', plain: true, label: isHidingDone ? '[x] Fertige ausblenden' : '[ ] Fertige ausblenden', onPress: () => { isHidingDone = !isHidingDone; redraw() } }),
+            Button({ key: 'fold-all', plain: true, label: 'Alle einklappen', onPress: () => { for (const g of v.groups) collapsed.add(g.key); redraw() } }),
+            Button({ key: 'open-all', plain: true, label: 'Alle ausklappen', onPress: () => { collapsed.clear(); redraw() } }),
+          ] })] : []),
+        ] }),
+        ...(isAgentsOpen ? [
+          bar('status', (['running', 'done', 'failed', 'aborted'] as const).map((k) => ({ share: total(v) > 0 ? v.status[k] / total(v) : 0, color: STATUS_COLOR[k] })), statusSvg(palette, v.status)),
+          Text({ dimColor: true, children: [statusLine(v.status)] }),
+          ...v.groups.map(group),
+        ] : []),
+      ] })
+    } catch (err) {
+      return Box({ flexDirection: 'column', children: [
+        Text({ color: 'warning', children: [`⚠ Grafik: ${err instanceof Error ? err.message : String(err)}`] }),
+        textTree({ Box, Text, Button }, v, redraw),
+      ] })
+    }
   })
 }

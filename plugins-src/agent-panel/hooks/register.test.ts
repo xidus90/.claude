@@ -9,11 +9,15 @@ const PANE = {
 } as const
 
 const LEAD = {
-  id: 'lead:s1', sessionId: 's1', kind: 'lead', name: 'Lead', role: 'lead', task: '', model: 'claude-opus-5-5', effort: '',
+  id: 'lead:s1', sessionId: 's1', kind: 'lead', name: 'Lead', role: 'lead', task: '', model: 'claude-opus-5-5', effort: 'xhigh',
   tokens: { input: 1000, output: 1000, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
   costUsd: 0.024, unpriced: false, firstAt: 0, lastAt: 1000, end: 'answered', errorText: '',
 }
 const GOOD = JSON.stringify({ runId: null, generations: ['s1'], agents: [LEAD], unreadableLines: 0, problems: [] })
+const AGENT = { ...LEAD, id: 'a1', kind: 'agent', name: 'impl-T1', role: 'implementer-backend', task: 'impl T1', model: 'claude-sonnet-5-5', effort: 'medium' }
+const TEAM = JSON.stringify({ runId: 'r1', generations: ['s1'], agents: [LEAD, AGENT], unreadableLines: 0, problems: [] })
+const WIDE = (surface: 'terminal' | 'desktop') => ({ ...PANE, surface, props: { ...PANE.props, bodyColumns: 80 } })
+const NARROW = (surface: 'terminal' | 'desktop') => ({ ...PANE, surface, props: { ...PANE.props, bodyColumns: 50 } })
 
 type Run = { exitCode: number; stdout: string; stderr: string }
 
@@ -73,7 +77,7 @@ test('the tick runs the summary script with the session and draws its totals', a
   await clock.advance(2000)
   expect(runs[0]?.slice(2, 4)).toEqual(['--session', 's1'])
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: /^≈ \$0\.02/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Kosten ≈ \$0\.02/ })).toBeDefined()
 })
 
 test('a tick while the script still runs starts no second one', async ($, on) => {
@@ -120,9 +124,9 @@ test('a failed script shows as a line and keeps the last good totals', async ($,
   await $.session.start(START)
   await $.command.run(TOGGLE)
   await clock.advance(2000)
-  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: '⚠ summarize exit 1: boom' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^≈ \$0\.02/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Kosten ≈ \$0\.02/ })).toBeDefined()
 })
 
 test('a missing node shows as a line', async ($, on) => {
@@ -192,5 +196,90 @@ test('a failed pane listing does not stop later ticks', async ($, on) => {
   await clock.advance(2000)
   expect(runs.length).toBeGreaterThan(0)
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect(await ui.find({ type: 'Text', text: /^≈ \$0\.02/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Kosten ≈ \$0\.02/ })).toBeDefined()
+})
+
+test('the desktop draws SVG pieces and a crab per role when wide', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [{ key: 'theme', value: 'dark' }] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(WIDE('desktop'))
+  expect(await ui.find({ key: 'svg-tiles' })).toBeDefined()
+  expect(await ui.find({ key: 'crab-implementer-backend' })).toBeDefined()
+  await ui.unmount()
+  const narrow = await $.ui.mount(NARROW('desktop'))
+  expect(await narrow.find({ key: 'crab-implementer-backend' })).toBeUndefined()
+})
+
+test('the terminal draws block bars and raster crabs when wide', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(WIDE('terminal'))
+  expect(await ui.find({ key: 'crab-implementer-backend' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /█/ })).toBeDefined()
+  expect(await ui.find({ type: 'Svg' })).toBeUndefined()
+})
+
+test('the section buttons fold the overview and the agents, and hide finished rows', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(NARROW('terminal'))
+  expect(await ui.find({ type: 'Text', text: /^Kosten ≈/ })).toBeDefined()
+  await ui.press({ key: 'sec-overview' })
+  expect(await ui.find({ type: 'Text', text: /^Kosten ≈/ })).toBeUndefined()
+  expect(await ui.find({ key: 'r-a1' })).toBeDefined()
+  await ui.press({ key: 'hide-done' })
+  expect(await ui.find({ key: 'r-a1' })).toBeUndefined()
+  await ui.press({ key: 'sec-agents' })
+  expect(await ui.find({ key: 'g-implementer-backend' })).toBeUndefined()
+})
+
+test('a new team run reopens the panel after it was closed', async ($, on) => {
+  mock.clock(on)
+  const opened: string[] = []
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), opened, [], [])
+  on('config.list', () => ({ value: [] }))
+  on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await $.command.run(TOGGLE)
+  await $.agent.spawn({ subagentType: 'implementer-backend', description: 'x', prompt: 'x', isTeammate: true })
+  expect(opened).toEqual(['agent-panel', 'agent-panel'])
+})
+
+test('a drawing that throws falls back to the text tree with a warning', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  // A width past any string length makes the block bars throw a RangeError.
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal', props: { ...PANE.props, bodyColumns: 1e13 } })
+  expect(await ui.find({ type: 'Text', text: /^⚠ Grafik: / })).toBeDefined()
+  expect(await ui.find({ key: 'g-implementer-backend' })).toBeDefined()
+  expect(await ui.find({ key: 'sec-overview' })).toBeUndefined()
+})
+
+test('a failed theme read falls back to the light palette and still draws', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
+  on('config.list', () => ({ deny: 'no config' }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(WIDE('desktop'))
+  // A failed theme read falls back to light and still draws.
+  expect(await ui.find({ key: 'svg-tiles' })).toBeDefined()
 })
