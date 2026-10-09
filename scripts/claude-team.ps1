@@ -38,6 +38,36 @@ function Get-RepoRoot {
     return $root
 }
 
+function Resolve-ClaudeExecutable {
+    <#
+        The real claude.exe. ProcessStartInfo cannot start the npm shims
+        (claude.ps1/.cmd), so look behind them for the exe they run.
+    #>
+    [OutputType([string])]
+    param()
+    $app = Get-Command claude.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($app) { return $app.Source }
+    foreach ($cmd in @(Get-Command claude -All -ErrorAction SilentlyContinue)) {
+        if (-not $cmd.Source) { continue }
+        $exe = Join-Path (Split-Path -Parent $cmd.Source) 'node_modules/@anthropic-ai/claude-code/bin/claude.exe'
+        if (Test-Path -LiteralPath $exe -PathType Leaf) { return $exe }
+    }
+    return $null
+}
+
+function Get-ToolProblem {
+    # Tool checks shared by a new run, a resume and a cleanup.
+    [OutputType([string[]])]
+    param()
+    $problems = @()
+    $git = Get-GitVersion
+    if ($git -lt $script:MinimumGit) {
+        $problems += "git $git is too old; the run needs git $($script:MinimumGit) for branch --delete-merged"
+    }
+    if (-not (Resolve-ClaudeExecutable)) { $problems += 'claude.exe not found on PATH or behind the npm shim' }
+    return $problems
+}
+
 function Test-TeamPrerequisite {
     <#
         Reasons that refuse the start; an empty list lets it go ahead. A
@@ -51,10 +81,7 @@ function Test-TeamPrerequisite {
         [switch]$New
     )
     $reasons = [System.Collections.Generic.List[string]]::new()
-    $git = Get-GitVersion
-    if ($git -lt $script:MinimumGit) {
-        $reasons.Add("git $git is too old; the run needs git $($script:MinimumGit) for branch --delete-merged")
-    }
+    foreach ($r in Get-ToolProblem) { $reasons.Add($r) }
     if (-not (Test-Path -LiteralPath (Join-Path $Repo '.claude/team-gate') -PathType Leaf)) {
         $reasons.Add('.claude/team-gate is missing: it names the gate command the verifier runs')
     }
@@ -173,10 +200,22 @@ function Get-LeadArgument {
 }
 
 function Invoke-ClaudeProcess {
-    # The one place that starts claude; tests replace it.
-    param([string[]]$ArgumentList)
-    & claude @ArgumentList
-    return $LASTEXITCODE
+    <#
+        The one place that starts claude; tests replace it. ProcessStartInfo
+        keeps the console as the child's stdin/stdout (the lead needs a TTY)
+        and returns only the exit code, never the child's output.
+    #>
+    [CmdletBinding()]
+    [OutputType([int])]
+    param([string]$FilePath = (Resolve-ClaudeExecutable), [string[]]$ArgumentList = @())
+    $info = [System.Diagnostics.ProcessStartInfo]::new($FilePath)
+    $info.UseShellExecute = $false
+    foreach ($arg in $ArgumentList) { $info.ArgumentList.Add($arg) }
+    $process = [System.Diagnostics.Process]::Start($info)
+    try {
+        $process.WaitForExit()
+        return $process.ExitCode
+    } finally { $process.Dispose() }
 }
 
 function Invoke-WithoutEffortOverride {
@@ -237,13 +276,18 @@ function Invoke-ClaudeTeam {
 
     if ($Cleanup) {
         $run = Join-Path $repo ".team-runs/$Cleanup"
+        $problems = if (Test-Path -LiteralPath (Join-Path $run 'run.json')) { @(Get-ToolProblem) } else { @("no run $Cleanup") }
+        if ($problems.Count -gt 0) {
+            $problems | ForEach-Object { Write-Host "claude-team: $_" -ForegroundColor Red }
+            return 1
+        }
         $settings = Get-SettingsPath -Repo $repo -Name $Cleanup
         $meta = Read-RunJson -Run $run
         $keep = @(git -C $repo branch --no-merged $meta.feature_branch --list "team/$Cleanup/*" --format='%(refname:short)')
         $prompt = "Clean up the agent-team run $Cleanup in $($repo -replace '\\', '/'). Feature branch: $($meta.feature_branch). " +
             "Unmerged branches to keep and report: $(if ($keep) { $keep -join ', ' } else { 'none' })."
-        Invoke-WithoutEffortOverride -ArgumentList @('-p', '--agent', 'cleaner', '--settings', $settings,
-            '--permission-mode', 'auto', $prompt) | Out-Null
+        $null = Invoke-WithoutEffortOverride -ArgumentList @('-p', '--agent', 'cleaner', '--settings', $settings,
+            '--permission-mode', 'auto', $prompt)
         $left = @(Get-CleanupLeftover -Repo $repo -Name $Cleanup -Allowed $keep)
         Remove-ClosedSettings -Settings $settings -Run $run
         if ($left.Count -gt 0) {
@@ -253,6 +297,11 @@ function Invoke-ClaudeTeam {
         return 0
     }
 
+    if ($Plan) {
+        # run.json and git ls-files want the plan relative to the repo root.
+        $full = [System.IO.Path]::GetFullPath($Plan, (Get-Location).ProviderPath)
+        $Plan = [System.IO.Path]::GetRelativePath($repo, $full) -replace '\\', '/'
+    }
     $reasons = @(Test-TeamPrerequisite -Repo $repo -Plan $Plan -New:([bool]$Plan))
     if ($reasons.Count -gt 0) {
         $reasons | ForEach-Object { Write-Host "claude-team: $_" -ForegroundColor Red }

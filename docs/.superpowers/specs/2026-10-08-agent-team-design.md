@@ -446,7 +446,9 @@ Regeln, die der Hook prüft:
 
 ## 6. Harte Tore
 
-Ein Skript `~/.claude/scripts/team-gate.py` (PEP 723, `uv run --script`). Die
+Ein Skript `team-gate.py` (PEP 723, `uv run --script`) neben dem Starter: Der
+Starter verdrahtet `$PSScriptRoot/team-gate.py`, ein Lauf aus einem Worktree
+dieses Repos nutzt also dessen Regeln, nicht `~/.claude/scripts/`. Die
 Hook-Einträge stehen **nicht** in `~/.claude/settings.json`, sondern in der
 Settings-Datei des Laufs, die der Starter per `--settings` übergibt
 (Abschnitt 7); jeder Eintrag ruft `team-gate.py --run <lauf> <ereignis>`. Andere

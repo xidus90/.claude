@@ -35,8 +35,13 @@ Describe 'Test-TeamPrerequisite' {
     BeforeEach {
         $script:Repo = New-TestRepo
         Mock Get-GitVersion { [version]'2.56.0' }
+        Mock Resolve-ClaudeExecutable { 'C:/fake/claude.exe' }
     }
 
+    It 'refuses a machine without claude.exe' {
+        Mock Resolve-ClaudeExecutable { $null }
+        Test-TeamPrerequisite -Repo $Repo -Plan 'docs/plan.md' -New | Should -Match 'claude.exe not found'
+    }
     It 'lets a clean repo with a committed plan through' {
         @(Test-TeamPrerequisite -Repo $Repo -Plan 'docs/plan.md' -New) | Should -HaveCount 0
     }
@@ -142,6 +147,45 @@ Describe 'Get-LeadArgument' {
     }
 }
 
+Describe 'Resolve-ClaudeExecutable' {
+    BeforeEach { $script:SavedPath = $env:PATH }
+    AfterEach { $env:PATH = $script:SavedPath }
+
+    It 'finds the exe behind an npm shim' {
+        $npm = Join-Path $TestDrive "npm-$([guid]::NewGuid().ToString('N').Substring(0, 6))"
+        $bin = Join-Path $npm 'node_modules/@anthropic-ai/claude-code/bin'
+        New-Item -ItemType Directory -Path $bin | Out-Null
+        Set-Content -LiteralPath (Join-Path $npm 'claude.cmd') -Value '@echo off'
+        Set-Content -LiteralPath (Join-Path $bin 'claude.exe') -Value ''
+        $env:PATH = $npm
+        Resolve-ClaudeExecutable | Should -Be (Join-Path $npm 'node_modules/@anthropic-ai/claude-code/bin/claude.exe')
+    }
+    It 'returns nothing when there is no claude' {
+        $empty = Join-Path $TestDrive "empty-$([guid]::NewGuid().ToString('N').Substring(0, 6))"
+        New-Item -ItemType Directory -Path $empty | Out-Null
+        $env:PATH = $empty
+        Resolve-ClaudeExecutable | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Invoke-ClaudeProcess' {
+    BeforeAll { $script:Pwsh = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source }
+
+    It 'returns the exit code as one int even when the child prints' {
+        $code = Invoke-ClaudeProcess -FilePath $Pwsh -ArgumentList @('-NoProfile', '-Command', 'Write-Output hi; exit 3')
+        @($code) | Should -HaveCount 1
+        $code | Should -BeOfType [int]
+        $code | Should -Be 3
+    }
+    It 'passes an argument with spaces, quotes and umlauts intact' {
+        $echo = Join-Path $TestDrive 'echo.ps1'
+        $out = Join-Path $TestDrive 'echo.txt'
+        Set-Content -LiteralPath $echo -Value 'Set-Content -LiteralPath $args[0] -Value $args[1] -Encoding utf8 -NoNewline'
+        Invoke-ClaudeProcess -FilePath $Pwsh -ArgumentList @('-NoProfile', '-File', $echo, $out, 'a b "c" Prüf') | Should -Be 0
+        Get-Content -LiteralPath $out -Raw -Encoding utf8 | Should -BeExactly 'a b "c" Prüf'
+    }
+}
+
 Describe 'Invoke-WithoutEffortOverride' {
     It 'hides CLAUDE_CODE_EFFORT_LEVEL from claude and restores it' {
         $env:CLAUDE_CODE_EFFORT_LEVEL = 'max'
@@ -168,6 +212,7 @@ Describe 'Invoke-ClaudeTeam' {
         Mock Get-GitVersion { [version]'2.56.0' }
         Mock Get-ClaudeVersion { '2.1.293' }
         Mock Get-SettingsPath { Join-Path $TestDrive "settings/$Name.json" }
+        Mock Resolve-ClaudeExecutable { 'C:/fake/claude.exe' }
         Mock Invoke-ClaudeProcess { $script:Argv = $ArgumentList; 0 }
         Push-Location $Repo
     }
@@ -219,6 +264,22 @@ Describe 'Invoke-ClaudeTeam' {
         $left | Should -HaveCount 2
         $left[0] | Should -BeLike 'worktree *worktrees/T1'
         $left[1] | Should -BeLike 'folder *r1'
+    }
+    It 'refuses to clean up a run that does not exist' {
+        Invoke-ClaudeTeam -Cleanup 'nope' | Should -Be 1
+        Should -Invoke Invoke-ClaudeProcess -Times 0
+    }
+    It 'refuses to clean up with git older than 2.56' {
+        New-TeamRun -Repo $Repo -Plan 'docs/plan.md' -Name 'r1' | Out-Null
+        Mock Get-GitVersion { [version]'2.54.0' }
+        Invoke-ClaudeTeam -Cleanup 'r1' | Should -Be 1
+        Should -Invoke Invoke-ClaudeProcess -Times 0
+    }
+    It 'stores the plan relative to the repo when started from a subfolder' {
+        Push-Location "$Repo/docs"
+        try { Invoke-ClaudeTeam -Plan 'plan.md' | Should -Be 0 } finally { Pop-Location }
+        $run = @(Get-ChildItem "$Repo/.team-runs" -Directory)[0]
+        (Read-RunJson -Run $run.FullName).plan | Should -Be 'docs/plan.md'
     }
     It 'leaves the caller environment as it was' {
         $before = (Get-ChildItem env: | ForEach-Object { "$($_.Name)=$($_.Value)" }) -join "`n"
