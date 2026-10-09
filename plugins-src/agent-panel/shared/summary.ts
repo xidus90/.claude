@@ -18,6 +18,8 @@ export type AgentSummary = {
   role: string
   task: string
   model: string
+  /** The reasoning effort the transcript names last; '' when none. */
+  effort: string
   tokens: TokenCounts
   costUsd: number
   /** True when some message used a model without a price; costUsd then covers only the priced ones. */

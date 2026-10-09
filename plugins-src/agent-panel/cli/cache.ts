@@ -4,7 +4,8 @@ import type { Meta } from './classify.ts'
 import type { FileState } from './transcript.ts'
 
 export type Cache = {
-  version: 1
+  /** Bumped when FileState changes shape, so an old cache is read from scratch. */
+  version: 2
   files: Record<string, FileState>
   metas: Record<string, Meta>
   /** Session id to the path of its lead transcript. */
@@ -12,13 +13,13 @@ export type Cache = {
 }
 
 export function emptyCache(): Cache {
-  return { version: 1, files: {}, metas: {}, leads: {} }
+  return { version: 2, files: {}, metas: {}, leads: {} }
 }
 
 export function loadCache(path: string): Cache {
   try {
     const data = JSON.parse(readFileSync(path, 'utf8')) as Partial<Cache>
-    return data.version === 1 && data.files && data.metas && data.leads ? (data as Cache) : emptyCache()
+    return data.version === 2 && data.files && data.metas && data.leads ? (data as Cache) : emptyCache()
   } catch {
     return emptyCache()
   }

@@ -39,7 +39,7 @@ const opts = (w: World, session: string) => ({ session, cwd: w.repo, home: w.hom
 
 test('summarizes a plain session: the lead and its subagents', () => {
   const w = world()
-  const l = lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
+  const l = lead(w, 'C--repo', 's1', JSON.stringify({ type: 'assistant', effort: 'xhigh', message: { id: 'm1', model: 'claude-opus-5-5', stop_reason: 'end_turn', usage: { output_tokens: 20 } } }) + '\n')
   agent(l, 'a1', { name: 'probe', agentType: 'Explore' }, assistant({ id: 'x1', model: 'claude-haiku-5-5' }))
   const s = summarize(opts(w, 's1'))
   assert.equal(s.runId, null)
@@ -49,6 +49,8 @@ test('summarizes a plain session: the lead and its subagents', () => {
     ['a1', 'agent', 'probe', 'Explore', 'probe'],
   ])
   assert.equal(s.agents[1]?.model, 'claude-haiku-5-5')
+  assert.equal(s.agents[0]?.effort, 'xhigh')
+  assert.equal(s.agents[1]?.effort, '')
   // A second call takes the meta from the cache file.
   assert.deepEqual(summarize(opts(w, 's1')).agents.map((a) => a.name), ['Lead', 'probe'])
 })

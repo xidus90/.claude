@@ -36,6 +36,7 @@ function toSummary(src: Source, sessionId: string, state: FileState, meta: Meta 
     role: isLead ? 'lead' : roleOf(meta ?? {}),
     task: isLead ? '' : taskOf(meta?.name ?? '') || name,
     model: state.model,
+    effort: state.effort,
     tokens: t.tokens,
     costUsd: t.costUsd,
     unpriced: t.unpriced,

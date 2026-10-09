@@ -150,3 +150,14 @@ test('matches the independent tally of a real teammate transcript', () => {
   assert.equal(s.lastAt, 1791549963815)
   assert.equal(endOf(s), 'answered')
 })
+
+test('remembers the last effort a line names', () => {
+  const lines = [
+    JSON.stringify({ type: 'user', effort: 'low', timestamp: '2026-10-09T10:00:00.000Z' }),
+    JSON.stringify({ type: 'assistant', effort: 'medium', message: { id: 'a', model: 'claude-opus-5-5', stop_reason: 'end_turn', usage: { output_tokens: 1 } } }),
+    JSON.stringify({ type: 'system' }),
+    JSON.stringify({ type: 'user', effort: '' }),
+  ].join('\n') + '\n'
+  assert.equal(applyLines(emptyState(), lines).effort, 'medium')
+  assert.equal(emptyState().effort, '')
+})

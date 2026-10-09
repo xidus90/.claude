@@ -7,7 +7,7 @@ const MIN = 60_000
 
 function agent(p: Partial<AgentSummary>): AgentSummary {
   return {
-    id: 'a', sessionId: 's1', kind: 'agent', name: 'impl-T1', role: 'implementer-backend', task: 'impl T1', model: 'claude-sonnet-5-5',
+    id: 'a', sessionId: 's1', kind: 'agent', name: 'impl-T1', role: 'implementer-backend', task: 'impl T1', model: 'claude-sonnet-5-5', effort: '',
     tokens: { input: 1000, output: 2000, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
     costUsd: 0.5, unpriced: false, firstAt: 0, lastAt: MIN, end: 'answered', errorText: '', ...p,
   }

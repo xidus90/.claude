@@ -13,6 +13,7 @@ type Usage = {
 type Line = {
   type?: string
   timestamp?: string
+  effort?: unknown
   isApiErrorMessage?: boolean
   message?: { id?: string; model?: string; stop_reason?: string | null; usage?: Usage; content?: unknown }
 }
@@ -28,6 +29,7 @@ export type FileState = {
   /** The newest message: later lines with its id replace it, a new id settles it into done. */
   pending: Pending | null
   model: string
+  effort: string
   firstAt: number | null
   lastAt: number | null
   hasAnswer: boolean
@@ -46,7 +48,7 @@ const add = (a: TokenCounts, b: TokenCounts): TokenCounts => ({
 })
 
 export function emptyState(): FileState {
-  return { offset: 0, done: zero(), doneCost: 0, unpriced: false, pending: null, model: '', firstAt: null, lastAt: null, hasAnswer: false, errorText: '', unreadable: 0 }
+  return { offset: 0, done: zero(), doneCost: 0, unpriced: false, pending: null, model: '', effort: '', firstAt: null, lastAt: null, hasAnswer: false, errorText: '', unreadable: 0 }
 }
 
 function tokensOf(u: Usage): TokenCounts {
@@ -97,6 +99,7 @@ export function applyLines(prev: FileState, text: string): FileState {
     }
     const at = Date.parse(line.timestamp ?? '')
     if (!Number.isNaN(at)) s = { ...s, firstAt: s.firstAt ?? at, lastAt: at }
+    if (typeof line.effort === 'string' && line.effort !== '') s = { ...s, effort: line.effort }
     if (line.type === 'assistant') s = applyAssistant(s, line)
   }
   return s
