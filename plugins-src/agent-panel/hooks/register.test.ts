@@ -25,6 +25,7 @@ function stub(
   closed: string[],
   panes: string[],
   deny = '',
+  failPanes = (): boolean => false,
 ): void {
   on('session.start', () => ({ cwd: '/work' }))
   on('command.register', () => ({ value: undefined }))
@@ -48,7 +49,7 @@ function stub(
     if (i >= 0) panes.splice(i, 1)
     return { value: undefined }
   })
-  on('ui.panes', () => ({ value: panes.map((id) => ({ id })) }))
+  on('ui.panes', () => (failPanes() ? { deny: 'boom' } : { value: panes.map((id) => ({ id })) }))
 }
 
 const START = { surface: 'terminal', isInteractive: true, cwd: '/work' } as const
@@ -173,4 +174,23 @@ test('closing the pane stops the tick from starting node', async ($, on) => {
   await clock.advance(4000)
   expect(before).toBe(2)
   expect(runs.length).toBe(before)
+})
+
+test('a failed pane listing does not stop later ticks', async ($, on) => {
+  const clock = mock.clock(on)
+  const runs: string[][] = []
+  const panes: string[] = []
+  let hasFailed = false
+  stub(on, runs, () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], panes, '', () => {
+    if (hasFailed || panes.length === 0) return false
+    hasFailed = true
+    return true
+  })
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  await clock.advance(2000)
+  expect(runs.length).toBeGreaterThan(0)
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Text', text: /^≈ \$0\.02/ })).toBeDefined()
 })

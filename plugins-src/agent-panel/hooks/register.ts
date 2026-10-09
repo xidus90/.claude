@@ -20,11 +20,8 @@ async function refresh($: EngineInterface): Promise<void> {
   // A session that never showed the panel never pays for a node start.
   if (!hasOpened || isBusy) return
   isBusy = true
-  if (!isOpen(await $.ui.panes(), PANE)) {
-    isBusy = false
-    return
-  }
   try {
+    if (!isOpen(await $.ui.panes(), PANE)) return
     const session = await $.session.id()
     const cwd = await $.session.cwd()
     const { home, tmp } = dirsOf({
