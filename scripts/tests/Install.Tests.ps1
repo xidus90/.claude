@@ -43,7 +43,7 @@ Describe 'Get-EnabledPlugin' {
 
     It 'reads the real settings.json of this repo' {
         $real = Join-Path $script:RepoRoot 'settings.json'
-        Get-EnabledPlugin -SettingsPath $real | Should -Contain 'browser-use@browser-use'
+        Get-EnabledPlugin -SettingsPath $real | Should -Contain 'agent-panel@claude-config'
     }
 }
 
