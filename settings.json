@@ -68,7 +68,8 @@
     "telemetry@builtin": false,
     "ponytail@ponytail": true,
     "savvy-progress@claude-kit": true,
-    "savvy-flow@claude-kit": false
+    "savvy-flow@claude-kit": false,
+    "agent-panel@claude-config": true
   },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {

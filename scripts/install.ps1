@@ -15,6 +15,8 @@ $script:RepoRoot = Split-Path -Parent $PSScriptRoot
 $script:Marketplaces = @{
     'claude-plugins-official' = 'anthropics/claude-plugins-official'
     'browser-use'             = 'https://github.com/browser-use/plugins.git'
+    # This repo is its own marketplace for the plugins under plugins-src/.
+    'claude-config'           = $script:RepoRoot
 }
 
 function Write-Step { param([string]$Message) Write-Host "==> $Message" -ForegroundColor Cyan }

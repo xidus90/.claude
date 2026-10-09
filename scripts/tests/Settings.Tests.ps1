@@ -21,13 +21,20 @@ Describe 'settings.json' {
         $raw | Should -Not -Match 'obsidian'
     }
 
-    It 'enables the four user-level plugins' -ForEach @(
+    It 'enables the user-level plugins' -ForEach @(
         @{ Plugin = 'superpowers@claude-plugins-official' }
         @{ Plugin = 'code-review@claude-plugins-official' }
         @{ Plugin = 'security-guidance@claude-plugins-official' }
         @{ Plugin = 'browser-use@browser-use' }
+        @{ Plugin = 'agent-panel@claude-config' }
     ) {
         $script:Settings.enabledPlugins.$Plugin | Should -BeTrue
+    }
+
+    It 'lists agent-panel in the marketplace of this repo' {
+        $market = Get-Content (Join-Path $script:RepoRoot '.claude-plugin/marketplace.json') -Raw | ConvertFrom-Json
+        $market.name | Should -Be 'claude-config'
+        ($market.plugins | Where-Object name -EQ 'agent-panel').source | Should -Be './plugins-src/agent-panel'
     }
 
     It 'routes the statusline through the wrapper, not cship directly' {
