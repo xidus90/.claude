@@ -1,2 +1,4 @@
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
+# Role definitions: the frontmatter parser and its test expect LF.
+agents/*.md text eol=lf
