@@ -73,17 +73,34 @@ Gelesen und gemessen am 2026-10-09.
    `turn.step`, `turn.complete` im Speicher. Es kennt weder Resume noch
    Generationen noch Rollen, und sein Preis-Fallback für unbekannte Modelle
    ist still.
+8. **Grenzen eines Mods.** Das Hooks-Modul hat keine Node-APIs und keinen
+   eigenen Dateizugriff. `$.fs.read` liest eine Datei ganz und höchstens
+   4 MiB; am 2026-10-09 lagen 76 von 4.509 Transkripten unter
+   `~/.claude/projects` darüber, das größte bei 27,4 MiB. `$.process.run(argv)`
+   startet ein Programm ohne Shell und liefert `{exitCode, stdout, stderr}`
+   (Zeitlimit 30 s). Ein Hook darf 10 s eigene Rechenzeit verbrauchen. Das
+   Modul importiert nur Dateien im Plugin-Verzeichnis über relative Pfade und
+   `claude-code`; `$` darf nur an Funktionen derselben Datei gehen.
+   `claude plugin validate` prüft das statisch, `claude plugin test` führt
+   jede `*.test.ts` unter dem Plugin mit dem Test-Kit `claude-code/testing`
+   aus (ohne Coverage-Messung).
 
 ## 3. Ansatz
 
-**Die Platte ist die einzige Wahrheit.** Das Panel liest bei jedem Durchlauf
-die Transkripte der zugehörigen Sitzungen inkrementell und rechnet daraus.
-Live-Hooks lösen nur das Neuzeichnen aus; `$.agent.list()` ergänzt den Status
-der laufenden Sitzung. Resume und Generationen fallen damit ohne eigenen Code
-ab, und es gibt keinen zweiten Zählweg, der auseinanderlaufen kann.
+**Die Platte ist die einzige Wahrheit.** Bei jedem Durchlauf liest ein
+Node-Hilfsskript im Plugin die Transkripte der zugehörigen Sitzungen
+inkrementell und gibt eine Zusammenfassung als JSON aus; der Mod ruft es per
+`$.process.run(['node', <skript>, …])` auf. Live-Hooks lösen nur das
+Neuzeichnen aus; `$.agent.list()` ergänzt den Status der laufenden Sitzung.
+Resume und Generationen fallen damit ohne eigenen Code ab, und es gibt keinen
+zweiten Zählweg, der auseinanderlaufen kann. Das Lesen liegt im Skript, weil
+der Mod Dateien über 4 MiB nicht lesen kann (Abschnitt 2, Punkt 8).
 
 Verworfen: live mitzählen plus Nachladen beim Start (zwei Wege zur selben
-Zahl); savvy-progress erweitern (fremdes Plugin, Updates überschreiben es).
+Zahl); savvy-progress erweitern (fremdes Plugin, Updates überschreiben es);
+Lesen über `$.fs.read` (4-MiB-Grenze); ein dauerhaft laufender Helfer per
+`$.process.spawn` (ob Claude Code ihn beim Neuladen oder Sitzungsende beendet,
+ist nicht dokumentiert).
 
 ## 4. Aufbau
 
@@ -91,14 +108,27 @@ Zahl); savvy-progress erweitern (fremdes Plugin, Updates überschreiben es).
 lokalen Marketplace in `settings.json` (`extraKnownMarketplaces`,
 `enabledPlugins`), damit `install.ps1` es auf jedem PC herstellt.
 
+Zwei Laufzeiten, zwei Ordner. `cli/` läuft unter Node und darf alles, was
+Node kann; `hooks/` läuft im Mod und darf nur `$`.
+
 | Datei | Aufgabe | Hängt ab von |
 |---|---|---|
-| `scan.ts` | Sitzungen der laufenden Sitzung bestimmen: die eigene ID; führt ein `<cwd>/.team-runs/*/run.json` sie in `sessions`, alle Sitzungen dieses Laufs. Dateien je Sitzung über die ID finden. | Dateisystem |
-| `transcript.ts` | Eine `.jsonl` inkrementell lesen: Tokens je Art und Modell, erste/letzte Zeit, Endzustand. | — |
-| `price.ts` | Preistabelle je Modell (Input, Output, Cache-Read, Cache-Write 5m, Cache-Write 1h) → USD. | — |
-| `classify.ts` | Rolle aus `customAgentType`, sonst `agentType`; Task-Art und Wurzel aus dem Namen. | — |
-| `model.ts` | Anzeige bauen: Kopf, Gruppen, Zeilen; Live-Status einmischen. | die vier oben |
-| `register.ts` | Verdrahtung: Panel beim ersten `agent.spawn` öffnen; Slash-Befehl `/agent-panel` schaltet es an und aus (im Terminal öffnet sich das Dock von selbst erst ab 144 Spalten, von Hand ab 110); Neuzeichnen per `$.clock.every(2000)` und bei `agent.spawn`/`turn.complete`, `ui.render`. UI über Funktionsaufrufe, kein JSX. | `model.ts` |
+| `cli/summarize.ts` | Einstieg: `node summarize.ts --session <id> --cwd <dir> --home <dir> --cache <datei>`; druckt die Zusammenfassung als eine JSON-Zeile auf stdout, Exit 0 auch bei Lesefehlern (sie stehen in der Zusammenfassung). | die übrigen in `cli/` |
+| `cli/scan.ts` | Sitzungen der laufenden Sitzung bestimmen: die eigene ID; führt ein `<cwd>/.team-runs/*/run.json` sie in `sessions`, alle Sitzungen dieses Laufs. Dateien je Sitzung über die ID unter `<home>/.claude/projects/*/` finden. | `node:fs` |
+| `cli/transcript.ts` | Eine `.jsonl` ab gemerktem Byte-Offset lesen: Tokens je Art und Modell, erste/letzte Zeit, Endzustand, unlesbare Zeilen. | `node:fs` |
+| `cli/cache.ts` | Offsets und Teilsummen je Datei in der Cache-Datei laden und speichern. | `node:fs` |
+| `cli/price.ts` | Preistabelle je Modell (Input, Output, Cache-Read, Cache-Write 5m, Cache-Write 1h) → USD. | — |
+| `cli/classify.ts` | Rolle aus `customAgentType`, sonst `agentType`; Task-Art und Wurzel aus dem Namen. | — |
+| `hooks/view.ts` | Reine Funktionen ohne `$`: aus Zusammenfassung, Live-Status und Uhrzeit die Anzeige bauen (Kopf, Gruppen, Zeilen, Abgleich, Formatierung). | — |
+| `hooks/register.ts` | Verdrahtung: beim `session.start` den Befehl `/agent-panel` registrieren und den Takt `$.clock.every(2000)` starten; je Takt `$.process.run(['node', …])`, Ergebnis parsen, `$.agent.list()` und `$.session.usage()` lesen, `$.ui.invalidate`; Panel beim ersten `agent.spawn` öffnen; `/agent-panel` schaltet es an und aus (im Terminal öffnet sich das Dock von selbst erst ab 144 Spalten, von Hand ab 110); `ui.render` zeichnet das Ergebnis von `view.ts`. UI über `$.ui.resolve(e)`-Elemente, kein JSX. Keine eigene Logik. | `hooks/view.ts` |
+
+**Cache-Datei:** `<tmp>/agent-panel/<session-id>.json`, nicht unter dem
+Plugin-Verzeichnis, das ein Update ersetzt. Fehlt oder ist sie unlesbar, liest
+das Skript von vorn.
+
+**Voraussetzung:** `node` ≥ 22.18 (führt TypeScript ohne Flag aus) im PATH des
+Claude-Code-Prozesses. Scheitert der Start, zeigt das Panel „node nicht
+gefunden“ statt Zahlen.
 
 **Änderung am Agent-Team:** `claude-team.ps1` erzeugt die Session-ID des Leads
 selbst, startet ihn mit `claude --session-id <uuid>` und hängt sie in
@@ -187,27 +217,45 @@ der Name auf keine Form, steht er unverändert da.
   zeigt „⚠ n Zeilen unlesbar“.
 - **Antwort über die Lesegrenze hinweg:** Kommen weitere Zeilen einer
   `message.id` erst im nächsten Durchlauf, ersetzt ihre `usage` die gemerkte;
-  je Datei bleibt dafür die `usage` der jüngsten ID im Speicher.
+  je Datei steht dafür die `usage` der jüngsten ID in der Cache-Datei.
 - **Unbekanntes Modell:** Tokens zählen, Kosten der Zeile „?“, der Kopf sagt
   „ohne n Agents“. Kein stiller Ersatzpreis.
 - **`run.json` fehlt, ist unlesbar oder hat kein `sessions`:** nur die eigene
   Sitzung, ohne Fehler.
 - **Datei kleiner als der gemerkte Offset:** ersetzt; neu von vorn lesen.
-- **Leistung:** Je Datei bleiben Offset, Größe und Teilsummen im Speicher; ein
-  Durchlauf liest nur neue Bytes.
+- **Leistung:** Je Datei stehen Offset, Größe und Teilsummen in der
+  Cache-Datei; ein Durchlauf liest nur neue Bytes. Der Takt von 2 s gilt unter
+  der Bedingung, dass ein Skriptaufruf mit warmem Cache unter 500 ms bleibt;
+  die erste Aufgabe des Plans misst das, und liegt er darüber, wird der Takt
+  auf das Vierfache der gemessenen Dauer gesetzt.
+- **Skript scheitert** (Start, Exit ≠ 0, stdout kein JSON, Zeitlimit): das
+  Panel behält die letzte gute Zusammenfassung und zeigt den Fehler als Zeile.
+- **Überlappende Aufrufe:** Läuft ein Aufruf noch, wenn der Takt kommt, fällt
+  der neue aus.
 - **Kein Wurf nach außen:** Jeder Fehler im Lesen wird eine Zeile im Panel; die
   Sitzung wird nie gestört.
 
 ## 7. Tests
 
-- **Werkzeug:** Node 24 (führt TypeScript direkt aus) mit `node --test
+- **Zwei Läufer.** `cli/` und `hooks/view.ts` prüft `node --test
   --experimental-test-coverage --test-coverage-lines=100
-  --test-coverage-branches=100 --test-coverage-functions=100`. Typprüfung mit
-  `tsc --noEmit --strict`; einzige Dev-Abhängigkeit `typescript`, die
-  Mod-Typen liegen als `claude-code.d.ts` im Plugin. Kein `any`. Node entfernt
-  Typen nur, statt zu übersetzen: Die `tsconfig` setzt
-  `erasableSyntaxOnly`, also keine `enum`, keine Parameter-Properties, keine
-  Namespaces.
+  --test-coverage-branches=100 --test-coverage-functions=100`; die Testdateien
+  heißen `*.spec.ts`, weil `claude plugin test` jede `*.test.ts` unter dem
+  Plugin selbst ausführt. `hooks/register.ts` prüft `claude plugin test` mit
+  dem Kit in `hooks/register.test.ts` (Stubs für `process.run`, `agent.list`,
+  `session.usage`, `ui.open`, `command.register`, `mock.clock` für den Takt),
+  dazu `claude plugin validate --strict`.
+- **Ausschluss mit Begründung:** `hooks/register.ts` steht nicht in der
+  Coverage-Messung, weil das Kit keine misst und die Datei unter Node nicht
+  läuft (sie spricht nur `$`). Dafür enthält sie keine Logik: jede
+  Entscheidung (Formatierung, Sortierung, Abgleich, Fehlertext) liegt in
+  `view.ts`; das Kit prüft nur, dass jede Verdrahtung einmal feuert.
+- **Typen:** `tsc --noEmit --strict`; einzige Dev-Abhängigkeit `typescript`.
+  Die Mod-Typen schreibt Claude Code beim Laden mit `--plugin-dir` nach
+  `.claude-plugin/types/`; sie werden eingecheckt, damit `tsc` ohne Sitzung
+  läuft. Kein `any`. Node entfernt Typen nur, statt zu übersetzen: Die
+  `tsconfig` setzt `erasableSyntaxOnly`, also keine `enum`, keine
+  Parameter-Properties, keine Namespaces.
 - **Fixtures:** gekürzte echte Transkripte und `meta.json` aus dem e2e-Lauf,
   bereinigt, unter `test/fixtures/`. Fälle: mehrere Zeilen je `message.id` mit
   wachsendem Output, Antwort über die Lesegrenze, halbe letzte Zeile, kaputte
@@ -216,14 +264,19 @@ der Name auf keine Form, steht er unverändert da.
   letzte Zeile je ID), `price` (jede Token-Art × jedes Modell, 5m/1h),
   `classify` (jede Titelform der Team-Spec, unbekannter Name), `scan` (Lauf
   mit zwei Generationen, `run.json` ohne `sessions`, fremde Sitzung, Sitzung
-  in anderem Projektordner), `model` (Wanduhr bei parallelen Agents, zwei Generationen mit Pause,
-  Sortierung, Lead-Gruppe, flache Liste, Zuordnung über `id`, Abgleich unter
-  und über 10 %), `register` mit gefälschtem `$` (Panel öffnet,
-  `/agent-panel` schaltet um, Neuzeichnen bei Ereignis, Fehler wird Zeile).
+  in anderem Projektordner), `cache` (fehlt, unlesbar, Rundreise),
+  `summarize` (Argumente, JSON auf stdout, Exit 0 bei Lesefehlern), `view`
+  (Wanduhr bei parallelen Agents, zwei Generationen mit Pause, Sortierung,
+  Lead-Gruppe, flache Liste, Zuordnung über `id`, Abgleich unter und über
+  10 %, Skriptfehler mit letzter guter Zusammenfassung), `register` im Kit
+  (Panel öffnet beim ersten `agent.spawn`, `/agent-panel` schaltet um, Takt
+  ruft das Skript, kein zweiter Aufruf während eines laufenden, Fehler wird
+  Zeile).
 - **Starter:** Pester-Test unter `scripts/tests/`: `--session-id` steht in der
   Befehlszeile, `sessions` wächst bei `-Resume`.
 - **Rauchtest von Hand** mit Protokoll unter `docs/.superpowers/`: ein echter
   Mini-Lauf mit `-Resume`, Panel im Terminal (≥ 144 Spalten) und in der
-  Desktop-App, Summe gegen eine Nachrechnung aus den Transkripten per Skript.
+  Desktop-App, Summe gegen eine Nachrechnung aus den Transkripten per Skript,
+  `node` im PATH des Claude-Code-Prozesses.
 - **Preise** bei der Umsetzung von der offiziellen Preisseite, mit Datum in
   `price.ts`.
