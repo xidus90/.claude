@@ -1,6 +1,6 @@
 # Agent-Panel: Messprotokoll der Mod-API
 
-Datum: 2026-10-09. Claude Code `2.1.295`. Node `v24.14.1`.
+Datum: 2026-10-09. Claude Code `2.1.295` (Befehl: `claude --version`). Node `v24.14.1`.
 
 ## Probelauf
 
@@ -27,7 +27,7 @@ Ausgabe: `done`. `agent-panel-probe.json` (gekürzt):
 
 `agents` ist leer: Beim `turn.complete` des Leads ist der Subagent schon beendet und
 erscheint nicht mehr in `$.agent.list()`. Die Felder stammen deshalb aus der
-Typdeklaration, nicht aus der Laufzeit.
+Typdeklaration; die Laufzeitprüfung folgt im zweiten Lauf unten.
 
 ## Kosten-Umfang
 
@@ -41,8 +41,24 @@ node cli/summarize.ts --session 6435d071-05d0-40a3-a2d0-a097a1e6f98d --cwd <prob
 - gemeldet `usage.cost.usd` = 0,016807
 
 Gemeldet liegt bei `alle` (Abweichung +0,47 %, unter 10 %), weit weg von `lead` (+45 %).
-Die Agentendatei heißt `<lead>/subagents/agent-a9e47251455aa4595.jsonl`; ihr Stamm
-ohne `agent-` ist die `id`, die `summarize` meldet.
+Die Agentendatei heißt `<lead>/subagents/agent-a9e47251455aa4595.jsonl`; dass `summarize`
+dieselbe ID meldet, ist kein Beleg (es leitet sie aus diesem Dateinamen ab).
+
+## Zweiter Lauf: `$.agent.list()` im Subagenten-Turn
+
+Probe erweitert: im `turn.complete` mit gesetztem `e.agentId` schreibt sie
+`{ eAgentId: e.agentId, agents: await $.agent.list() }` nach `agent-panel-probe-sub.json`.
+Derselbe `claude -p`-Befehl einmal in leerem cwd `probe-run2/`; Ausgabe `done`,
+Session `4d986488-cb9c-446b-bd87-4b4eb6cc933e`.
+
+```json
+{ "eAgentId": "aab33e3516578ed0f",
+  "agents": [ { "id": "aab33e3516578ed0f", "description": "Antwort mit ok", "type": "general-purpose", "status": "completed" } ] }
+```
+
+Datei: `<lead>/subagents/agent-aab33e3516578ed0f.jsonl` (dazu `.meta.json`, `.prefix.json`).
+`agents[0].id` = `e.agentId` = Dateistamm. `teammateId`, `parentId`, `spawnedBy` fehlen.
+Der Status ist im eigenen `turn.complete` schon `completed`.
 
 ## Typen (`.claude-plugin/types/claude-code/index.d.ts`)
 
@@ -56,19 +72,21 @@ ohne `agent-` ist die `id`, die `summarize` meldet.
 
 ## Laufzeit von `summarize`
 
-Größtes Lead-Transkript: `D--GitHub-tesserack/2ad92106-48c4-4029-9b4d-fa5c7fad4fed.jsonl`, 28 730 840 Bytes, 9 Agenten, 0 unlesbare Zeilen.
+Größtes Lead-Transkript: `D--GitHub-tesserack/2ad92106-48c4-4029-9b4d-fa5c7fad4fed.jsonl`, 28 730 840 Bytes; laut `summarize`-Ausgabe (`agents.length`, `unreadableLines`) 9 Agenten, 0 unlesbare Zeilen.
 
 ```
-time node cli/summarize.ts --session 2ad92106-48c4-4029-9b4d-fa5c7fad4fed --cwd D:/GitHub/tesserack --home "$HOME" --cache <scratch>/big-cache.json
+time node cli/summarize.ts --session 2ad92106-48c4-4029-9b4d-fa5c7fad4fed --cwd D:/GitHub/tesserack --home "$HOME" --cache <scratch>/big-cache3.json > /dev/null
 ```
 
-kalt 0,181 s (Kontrolllauf mit frischem Cache: 0,213 s), warm 0,099 s.
+Drei kalte Läufe, je mit frischem Cache: 0,181 s (Ausgabe in `head -c 300`), 0,213 s (Ausgabe
+in eine Datei), 0,186 s (`> /dev/null`). Warm: 0,099 s (`head`), 0,086 s (`> /dev/null`).
+Gewertet: kalt 0,213 s (der langsamste), warm 0,086 s.
 
 ## Ergebnisse
 
 Ergebnis: REPORTED_COST_INCLUDES_AGENTS = true (gemeldet 0,016807 vs. alle 0,016728, +0,47 %; lead 0,011595)
 Ergebnis: `$.session.usage().cost` ist ein Objekt `{ usd: number }`, optional (`cost?: SessionCost`)
-Ergebnis: AgentInfo hat `id, teammateId?, description, type, status, parentId?, spawnedBy?`; `id` gleich Stamm von `agent-<id>.jsonl` zur Laufzeit nicht belegt (`$.agent.list()` beim Lead-`turn.complete` leer), der Stamm `a9e47251455aa4595` ist die Agent-ID aus dem Transkript
+Ergebnis: AgentInfo hat `id, teammateId?, description, type, status, parentId?, spawnedBy?` (zur Laufzeit gefüllt: id, description, type, status); `id` = `e.agentId` = Stamm von `agent-<id>.jsonl`, gemessen im Subagenten-Turn (`aab33e3516578ed0f` dreimal gleich). Beim `turn.complete` des Leads ist die Liste leer
 Ergebnis: `$.plugin.root` ist ein Wert (`root: string`)
 Ergebnis: nodeStartMs = 102, 3-MB-Ausgabe kommt mit Länge 3000000 vollständig an (Grenze 4194304 Bytes)
-Ergebnis: summarize kalt 0,181 s, warm 0,099 s auf 28,7 MB; TICK_MS = 2000
+Ergebnis: summarize kalt 0,213 s, warm 0,086 s auf 28,7 MB; TICK_MS = 2000
