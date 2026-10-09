@@ -23,7 +23,7 @@ relevant output. Write nothing in the repository.
 Read the verdict rules (`verdicts.md`, path in your spawn prompt) before
 writing a verdict. When you confirm a defect, grade its severity by the levels
 in `verdicts.md` yourself; if your grade differs from the finder's, say why in
-one sentence in the `claim`. Your task title says what to judge:
+one sentence in the `claim`. Never grade an exploitable security hole `low`. Your task title says what to judge:
 
 - `[verify:impl] W`, `[verify:fix] W`: the implementer's claims, probed in
   the worktree of W. RED: put the changed non-test files back to the state

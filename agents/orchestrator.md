@@ -74,12 +74,15 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
 3. **Chain of a root W**, in this order, each step a task and a teammate:
    - `[impl]` or `[fix]` → `implementer-<domain>`.
    - `[verify:impl]` or `[verify:fix]` → `verifier`. Fail → new
-     `[fix:<domain>] W` with the confirmed findings in its description.
+     `[fix:<domain>] W` with the confirmed findings of `medium` or worse and
+     the refuted claims in its description; confirmed `low` findings go to the
+     report, never into a fix.
    - Pass → `[review:code] W` → `code-reviewer` and `[review:security] W` →
      `security-reviewer`, in parallel.
    - Both done → `[verify:review] W` → `verifier`, naming both review task ids.
-     A failing `[verify:review] W` → `[fix:<domain>] W`; a passing one → the
-     root is green (confirmed `low` findings go to the report).
+     A failing `[verify:review] W` → `[fix:<domain>] W` with only its
+     confirmed findings of `medium` or worse; a passing one → the root is green.
+     Confirmed `low` findings go to the report in both cases.
    - Point `[merge] W`'s blockedBy at the newest `[verify:review] W` each round.
    - A round is every `[impl]` and every `[fix]` without `:conflict`. Before a
      fourth round of the same root, ask the human with AskUserQuestion and
