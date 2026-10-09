@@ -215,3 +215,5 @@ export function toggle(set: Set<string>, key: string): void {
   if (set.has(key)) set.delete(key)
   else set.add(key)
 }
+
+export const isOpen = (panes: { id: string }[], id: string): boolean => panes.some((p) => p.id === id)

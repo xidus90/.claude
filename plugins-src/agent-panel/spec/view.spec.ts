@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildView, detailLine, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, dirsOf, toggle, type ViewInput } from '../hooks/view.ts'
+import { buildView, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, dirsOf, toggle, type ViewInput } from '../hooks/view.ts'
 import type { AgentSummary, Summary } from '../shared/summary.ts'
 
 const MIN = 60_000
@@ -190,4 +190,9 @@ test('toggle adds a missing key and removes a present one', () => {
   assert.deepEqual([...s], ['a'])
   toggle(s, 'a')
   assert.deepEqual([...s], [])
+})
+
+test('tells whether a pane is open', () => {
+  assert.equal(isOpen([{ id: 'x' }, { id: 'agent-panel' }], 'agent-panel'), true)
+  assert.equal(isOpen([{ id: 'x' }], 'agent-panel'), false)
 })

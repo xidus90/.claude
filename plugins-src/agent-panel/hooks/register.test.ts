@@ -160,3 +160,17 @@ test('a row button shows and hides its token breakdown', async ($, on) => {
   await ui.press({ key: 'r-lead:s1' })
   expect(await ui.find(detail)).toBeUndefined()
 })
+
+test('closing the pane stops the tick from starting node', async ($, on) => {
+  const clock = mock.clock(on)
+  const runs: string[][] = []
+  stub(on, runs, () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [])
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const before = runs.length
+  await $.command.run(TOGGLE)
+  await clock.advance(4000)
+  expect(before).toBe(2)
+  expect(runs.length).toBe(before)
+})

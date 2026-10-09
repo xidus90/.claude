@@ -1,6 +1,6 @@
 import type { EngineInterface, Register } from 'claude-code'
 import type { Summary } from '../shared/summary.ts'
-import { buildView, dirsOf, toggle,detailLine, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, type LiveAgent } from './view.ts'
+import { buildView, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, type LiveAgent } from './view.ts'
 
 const PANE = 'agent-panel'
 // Measured in docs/.superpowers/smoke/2026-10-09-agent-panel-probe.md.
@@ -20,6 +20,10 @@ async function refresh($: EngineInterface): Promise<void> {
   // A session that never showed the panel never pays for a node start.
   if (!hasOpened || isBusy) return
   isBusy = true
+  if (!isOpen(await $.ui.panes(), PANE)) {
+    isBusy = false
+    return
+  }
   try {
     const session = await $.session.id()
     const cwd = await $.session.cwd()
@@ -61,8 +65,7 @@ export const register: Register = (on) => {
   })
 
   on('command.run', { command: 'agent-panel' }, async ($) => {
-    const isOpen = (await $.ui.panes()).some((p) => p.id === PANE)
-    if (isOpen) await $.ui.close({ id: PANE })
+    if (isOpen(await $.ui.panes(), PANE)) await $.ui.close({ id: PANE })
     else await openPane($, true)
     return {}
   })
