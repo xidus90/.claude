@@ -104,7 +104,8 @@ Describe 'the tracked set' {
 
         $allowedFiles = @('.gitignore', '.gitattributes', 'README.md', 'CLAUDE.md',
                           'settings.json', 'keybindings.json')
-        $allowedRoots = @('skills/', 'agents/', 'statusline/', 'scripts/', 'docs/')
+        $allowedRoots = @('skills/', 'agents/', 'statusline/', 'scripts/', 'docs/',
+                          'plugins-src/', '.claude-plugin/')
 
         foreach ($file in $tracked) {
             $ok = ($allowedFiles -contains $file) -or

@@ -25,7 +25,8 @@
     "mcp-server-dev@claude-plugins-official": false,
     "code-review@claude-plugins-official": true,
     "security-guidance@claude-plugins-official": true,
-    "browser-use@browser-use": true
+    "browser-use@browser-use": true,
+    "agent-panel@claude-config": true
   },
   "extraKnownMarketplaces": {
     "claude-plugins-official": {

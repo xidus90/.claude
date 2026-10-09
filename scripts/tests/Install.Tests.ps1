@@ -56,6 +56,9 @@ Describe 'Get-MarketplaceForPlugin' {
         Get-MarketplaceForPlugin -Plugin 'browser-use@browser-use' |
             Should -Be 'https://github.com/browser-use/plugins.git'
     }
+    It 'maps the plugins of this repo to the repo itself' {
+        Get-MarketplaceForPlugin -Plugin 'agent-panel@claude-config' | Should -Be $script:RepoRoot
+    }
     It 'returns nothing for a marketplace it does not know' {
         # Better to install nothing than to guess a URL and register a
         # marketplace the user never asked for.

@@ -135,6 +135,8 @@ Install-Skript stellt den Zustand daraus her.
 | `scripts/write-cc-version.ps1` | SessionStart-Hook für die Versionsanzeige |
 | `scripts/tests/` | Pester-5-Tests zu allem oben |
 | `docs/superpowers/` | Specs und Implementierungspläne |
+| `plugins-src/agent-panel/` | Mod: Agent-Panel mit Kosten, Tokens, Zeit, Status |
+| `.claude-plugin/marketplace.json` | Lokaler Marketplace für die Plugins unter `plugins-src/` |
 
 ## Agent-Team
 
@@ -179,6 +181,41 @@ Sie gelten nur in Sitzungen, die der Starter öffnet.
 ```
 uv run --no-project --python 3.13 --with pytest --with pytest-cov --with pytest-xdist --with pyyaml pytest scripts/tests/teamgate -q -n 8 --cov=scripts --cov-branch --cov-fail-under=100
 ```
+
+## Agent-Panel
+
+Ein Mod (`plugins-src/agent-panel/`) zeigt rechts, was die Sitzung an Agents
+gespawnt hat: je Agent Rolle, Task, Status, Modell, Kosten, Tokens und Dauer,
+dazu die Summe — bei einem Team-Lauf über alle Generationen. `/agent-panel`
+schaltet es an und aus; beim ersten gespawnten Agent öffnet es sich selbst
+(im Terminal erst ab 144 Spalten). Entwurf:
+`docs/.superpowers/specs/2026-10-09-agent-panel-design.md`.
+
+Die Kosten sind eine Schätzung aus Tokens und einer Preistabelle
+(`cli/price.ts`), kein Abrechnungswert. Weicht die Summe der laufenden Sitzung
+um mehr als 10 % von dem ab, was Claude Code selbst meldet, sagt das Panel
+„Preistabelle prüfen“.
+
+**Voraussetzung:** `node` ≥ 22.18 im PATH.
+
+**Entwickeln:** `claude --plugin-dir plugins-src/agent-panel` lädt das
+Arbeitsverzeichnis und lädt bei jedem Speichern neu. Die installierte Kopie
+legt Claude Code nach Version ab; nach einer Änderung `version` in
+`.claude-plugin/plugin.json` erhöhen und `claude plugin install
+agent-panel@claude-config` erneut ausführen.
+
+**Tests** (in `plugins-src/agent-panel`, einmal `npm ci`):
+
+    npm test            # Node-Tests, 100 % Coverage für cli/ und hooks/view.ts
+    npm run kit         # Verdrahtung im Test-Kit von Claude Code
+    npm run validate    # statische Prüfung des Mods
+    npm run typecheck
+
+`npm run typecheck` braucht die Typen des Mod-API. Claude Code schreibt sie
+erst, wenn eine interaktive Sitzung das Plugin einmal mit
+`claude --plugin-dir plugins-src/agent-panel` lädt; `claude -p` schreibt sie
+nicht. Sie liegen unter `.claude-plugin/types/`, das eine eigene `.gitignore`
+mitbringt und nicht committet wird.
 
 ## Tests
 
