@@ -1,0 +1,178 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { buildView, detailLine, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, type ViewInput } from '../hooks/view.ts'
+import type { AgentSummary, Summary } from '../shared/summary.ts'
+
+const MIN = 60_000
+
+function agent(p: Partial<AgentSummary>): AgentSummary {
+  return {
+    id: 'a', sessionId: 's1', kind: 'agent', name: 'impl-T1', role: 'implementer-backend', task: 'impl T1', model: 'claude-sonnet-5-5',
+    tokens: { input: 1000, output: 2000, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
+    costUsd: 0.5, unpriced: false, firstAt: 0, lastAt: MIN, end: 'answered', errorText: '', ...p,
+  }
+}
+
+const lead = (p: Partial<AgentSummary>) => agent({ id: 'lead:s1', kind: 'lead', name: 'Lead', role: 'lead', task: '', model: 'claude-opus-5-5', ...p })
+
+function input(summary: Summary | null, p: Partial<ViewInput> = {}): ViewInput {
+  return { summary, live: [], reportedCostUsd: null, costIncludesAgents: true, now: 10 * MIN, error: '', ...p }
+}
+
+const team = (agents: AgentSummary[], generations = ['s1']): Summary => ({ runId: 'r1', generations, agents, unreadableLines: 0, problems: [] })
+const plain = (agents: AgentSummary[]): Summary => ({ runId: null, generations: ['s1'], agents, unreadableLines: 0, problems: [] })
+
+test('formats cost, tokens and time', () => {
+  assert.equal(fmtCost(0.4), '$0.40')
+  assert.equal(fmtCost(12.34), '$12.3')
+  assert.equal(fmtTokens(999), '999')
+  assert.equal(fmtTokens(140_000), '140k')
+  assert.equal(fmtTokens(1_800_000), '1.8M')
+  assert.equal(fmtTime(190_000), '3:10')
+  assert.equal(fmtTime(3_725_000), '1:02:05')
+  assert.equal(fmtTime(-5), '0:00')
+})
+
+test('groups a team run by role, running groups first, then by cost', () => {
+  const v = buildView(input(team([
+    lead({ firstAt: 0, lastAt: MIN, costUsd: 0.9 }),
+    agent({ id: 'v1', role: 'verifier', task: 'verify T1 #1', costUsd: 2 }),
+    agent({ id: 'i1', costUsd: 0.5 }),
+    agent({ id: 'i2', task: 'impl T2', costUsd: 0.3 }),
+  ]), { live: [{ id: 'i2', status: 'running' }] }))
+  assert.deepEqual(v.groups.map((g) => g.title), ['Lead (Orchestrator)', 'implementer-backend', 'verifier'])
+  assert.deepEqual(v.groups[1]?.rows.map((r) => [r.glyph, r.label]), [['●', 'impl T2'], ['✓', 'impl T1']])
+  assert.equal(v.groups[1]?.cost, '$0.80')
+  assert.equal(v.title, 'Lauf r1')
+})
+
+test('lists a plain session flat, under Lead and Agents, by start time', () => {
+  const v = buildView(input(plain([lead({}), agent({ id: 'b', name: 'second', firstAt: 5 }), agent({ id: 'a', name: 'first', firstAt: 1 })])))
+  assert.equal(v.title, 'Diese Sitzung')
+  assert.deepEqual(v.groups.map((g) => g.title), ['Lead', 'Agents'])
+  assert.deepEqual(v.groups[1]?.rows.map((r) => r.label), ['first', 'second'])
+})
+
+test('takes live status first, then the transcript', () => {
+  const v = buildView(input(plain([lead({}),
+    agent({ id: 'p', name: 'p' }), agent({ id: 'w', name: 'w' }), agent({ id: 'c', name: 'c', end: 'open' }),
+    agent({ id: 'f', name: 'f' }), agent({ id: 'k', name: 'k' }), agent({ id: 'u', name: 'u' }),
+    agent({ id: 'e', name: 'e', end: 'error', errorText: 'rate_limit' }), agent({ id: 'o', name: 'o', end: 'open' }),
+  ]), { live: [
+    { id: 'p', status: 'pending' }, { id: 'w', status: 'idle' }, { id: 'c', status: 'completed' },
+    { id: 'f', status: 'failed' }, { id: 'k', status: 'killed' }, { id: 'u', status: 'something-new' },
+  ] }))
+  const rows = Object.fromEntries((v.groups.find((g) => g.key === 'agents')?.rows ?? []).map((r) => [r.label, [r.glyph, r.note]]))
+  assert.deepEqual(rows, {
+    p: ['●', ''], w: ['●', ''], c: ['✓', ''], f: ['✗', 'gescheitert'], k: ['✗', 'gescheitert'], u: ['●', ''],
+    e: ['✗', 'rate_limit'], o: ['⊘', 'abgebrochen'],
+  })
+  assert.equal(v.counts, '● 3  ✓ 1  ✗ 3  ⊘ 1')
+})
+
+test('shows the current lead as running and earlier leads by their transcript', () => {
+  const v = buildView(input(team([
+    lead({ id: 'lead:s1', sessionId: 's1', end: 'answered' }),
+    lead({ id: 'lead:s2', sessionId: 's2', end: 'error', errorText: 'boom' }),
+    lead({ id: 'lead:s3', sessionId: 's3', end: 'open' }),
+    lead({ id: 'lead:s4', sessionId: 's4', end: 'answered' }),
+  ], ['s1', 's2', 's3', 's4'])))
+  assert.deepEqual(v.groups[0]?.rows.map((r) => [r.label, r.glyph]), [['Gen 1', '✓'], ['Gen 2', '✗'], ['Gen 3', '⊘'], ['Gen 4', '●']])
+  assert.equal(v.title, 'Lauf r1 (Gen 1–4)')
+})
+
+test('sums wall-clock time per generation, without the pause between them and without double-counting parallel agents', () => {
+  const v = buildView(input(team([
+    lead({ id: 'lead:s1', sessionId: 's1', firstAt: 0, lastAt: 10 * MIN }),
+    agent({ id: 'x', sessionId: 's1', firstAt: 2 * MIN, lastAt: 9 * MIN }),
+    agent({ id: 'y', sessionId: 's1', firstAt: 3 * MIN, lastAt: 12 * MIN }),
+    lead({ id: 'lead:s2', sessionId: 's2', firstAt: 600 * MIN, lastAt: 601 * MIN }),
+    agent({ id: 'z', sessionId: 's2', firstAt: null, lastAt: null }),
+  ], ['s1', 's2']), { now: 605 * MIN }))
+  // Generation 1: 0..12 min; generation 2: 600 min .. now (its lead runs) = 5 min.
+  assert.match(v.totals, / 17:00/)
+})
+
+test('counts a running agent up to now', () => {
+  const v = buildView(input(plain([lead({ firstAt: 0, lastAt: MIN }), agent({ id: 'r', firstAt: 0, lastAt: MIN })]), { live: [{ id: 'r', status: 'running' }], now: 3 * MIN }))
+  assert.equal(v.groups[1]?.rows[0]?.time, '3:00')
+})
+
+test('marks unpriced agents with ? and names how many the total leaves out', () => {
+  const v = buildView(input(plain([lead({ costUsd: 1 }), agent({ id: 'q', unpriced: true, costUsd: 0.2 })])))
+  assert.equal(v.groups[1]?.rows[0]?.cost, '?')
+  assert.match(v.totals, /^≈ \$1\.20 .* ohne 1 Agents$/)
+})
+
+test('reconciles the reported cost with the right sum, and warns above 10 %', () => {
+  const agents = [lead({ id: 'lead:s1', sessionId: 's1', costUsd: 1 }), agent({ id: 'x', sessionId: 's1', costUsd: 1 })]
+  assert.deepEqual(buildView(input(plain(agents), { reportedCostUsd: 2.1 })).notices, [])
+  assert.deepEqual(buildView(input(plain(agents), { reportedCostUsd: 3 })).notices, ['⚠ Preistabelle prüfen: gemeldet $3.00, errechnet $2.00'])
+  assert.deepEqual(buildView(input(plain(agents), { reportedCostUsd: 1.05, costIncludesAgents: false })).notices, [])
+  assert.equal(buildView(input(plain(agents), { reportedCostUsd: 1.05 })).groups[0]?.rows[0]?.note, 'gemeldet $1.05')
+  assert.deepEqual(buildView(input(plain(agents), { reportedCostUsd: 0 })).notices, [])
+})
+
+test('lists script errors, unreadable lines and problems as notices', () => {
+  const s = { ...plain([lead({})]), unreadableLines: 3, problems: ['kein Transkript für Sitzung x'] }
+  assert.deepEqual(buildView(input(s, { error: 'summarize exit 1: boom' })).notices, [
+    '⚠ summarize exit 1: boom', '⚠ 3 Zeilen unlesbar', '⚠ kein Transkript für Sitzung x',
+  ])
+})
+
+test('says it is loading before the first summary, and shows only the error if that failed', () => {
+  assert.deepEqual(buildView(input(null)), { title: 'Agents', totals: 'lade …', counts: '', notices: [], groups: [] })
+  assert.deepEqual(buildView(input(null, { error: 'node nicht gefunden: x' })).notices, ['⚠ node nicht gefunden: x'])
+})
+
+test('renders group and row lines', () => {
+  const v = buildView(input(plain([lead({}), agent({ id: 'e', name: 'e', end: 'error', errorText: 'boom' })])))
+  const g = v.groups[1]
+  assert.ok(g)
+  assert.equal(groupLine(g, false), `▾ Agents  $0.50  3k  1:00`)
+  assert.equal(groupLine(g, true), `▸ Agents  $0.50  3k  1:00`)
+  const row = g.rows[0] ?? assert.fail()
+  assert.equal(rowLine(row), 'e  Sonnet 5.5  $0.50  3k  1:00  boom')
+  assert.equal(rowLine({ ...row, note: '' }), 'e  Sonnet 5.5  $0.50  3k  1:00')
+  assert.equal(detailLine(row), '      in 1k · out 2k · read 0 · write 0/0')
+  assert.deepEqual(['●', '✓', '✗', '⊘'].map((x) => glyphColor(x as '●')), ['cyan', 'green', 'red', 'yellow'])
+})
+
+test('names models short', () => {
+  const v = buildView(input(plain([lead({ model: 'claude-opus-5[1m]' }), agent({ id: 'h', model: 'claude-haiku-4-5-20251001' }), agent({ id: 'n', model: '' })])))
+  assert.deepEqual([v.groups[0]?.rows[0]?.model, ...(v.groups[1]?.rows.map((r) => r.model) ?? [])], ['Opus 5', 'Haiku 4.5', '—'])
+})
+
+test('parses the script result', () => {
+  const s = plain([])
+  assert.deepEqual(parseResult({ exitCode: 0, stdout: JSON.stringify(s), stderr: '' }), { summary: s, error: '' })
+  assert.deepEqual(parseResult({ exitCode: 2, stdout: '', stderr: ' usage \n' }), { summary: null, error: 'summarize exit 2: usage' })
+  assert.deepEqual(parseResult({ exitCode: 0, stdout: 'nope', stderr: '' }), { summary: null, error: 'summarize: Ausgabe ist kein JSON' })
+  assert.deepEqual(parseResult({ exitCode: 0, stdout: '{}', stderr: '' }), { summary: null, error: 'summarize: unerwartete Ausgabe' })
+})
+
+test('words a failed start', () => {
+  assert.equal(startError(new Error('spawn node ENOENT')), 'node nicht gefunden: spawn node ENOENT')
+  assert.equal(startError('timed out'), 'summarize gescheitert: timed out')
+})
+
+test('reads the reported cost', () => {
+  assert.equal(reportedCost(1.5), 1.5)
+  assert.equal(reportedCost({ totalUsd: 2 }), 2)
+  assert.equal(reportedCost({ usd: 3 }), 3)
+  assert.equal(reportedCost({ total_cost_usd: 4 }), 4)
+  assert.equal(reportedCost({ other: 1 }), null)
+  assert.equal(reportedCost(undefined), null)
+  assert.equal(reportedCost(Number.NaN), null)
+})
+
+test('builds the script call', () => {
+  assert.deepEqual(scriptArgs('P/cli/summarize.ts', 's1', 'C:/repo', 'C:/Users/u', 'C:/tmp'), [
+    'node', 'P/cli/summarize.ts', '--session', 's1', '--cwd', 'C:/repo', '--home', 'C:/Users/u', '--cache', 'C:/tmp/agent-panel/s1.json',
+  ])
+})
+
+test('sorts an agent without a first time as if it started at zero', () => {
+  const v = buildView(input(plain([lead({}), agent({ id: 'b', name: 'late', firstAt: 5 }), agent({ id: 'a', name: 'none', firstAt: null, lastAt: null }), agent({ id: 'c', name: 'late2', firstAt: 9 })])))
+  assert.deepEqual(v.groups.find((g) => g.key === 'agents')?.rows.map((r) => [r.label, r.time]), [['none', '0:00'], ['late', '1:00'], ['late2', '1:00']])
+})
