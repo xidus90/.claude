@@ -8,6 +8,13 @@
 Die Schritte 1, 2, 4 und 5 brauchen ein interaktives Terminal, die Desktop-App
 und einen laufenden Lead. Sie sind unten als Checkliste offen gelassen.
 
+## Vorab: Panel in einer interaktiven Sitzung — vom Nutzer gesehen
+
+`claude --plugin-dir plugins-src/agent-panel` im Terminal, dann `/agent-panel`:
+Das Panel öffnet sich und sieht nach Aussage des Nutzers gut aus (2026-10-09).
+Ein Team-Lauf, die Desktop-App, Resume und der Fall ohne `node` sind damit noch
+nicht gesehen.
+
 ## Schritt 1: Mini-Lauf mit Resume — offen, vom Nutzer auszuführen
 
 Erwartung: In einem Spielzeug-Repo mit `.claude/team-gate` und einem Plan aus
