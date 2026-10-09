@@ -21,6 +21,10 @@ test('maps roles to costumes, with plugin prefixes, browser names and a plain fa
   assert.equal(costumeOf('general-purpose'), 'plain')
 })
 
+test('treats names inherited from Object.prototype as unknown roles', () => {
+  for (const role of ['constructor', '__proto__', 'x:valueOf']) assert.equal(costumeOf(role), 'plain', role)
+})
+
 test('keeps every pixel inside the grid', () => {
   for (const key of Object.keys(COSTUMES)) {
     for (const [x, y, w, h] of spriteOf(key)) {
@@ -40,4 +44,8 @@ test('paints a grid with the body clay and empty cells', () => {
 
 test('falls back to the plain crab for an unknown costume key', () => {
   assert.deepEqual(spriteOf('nope'), spriteOf('plain'))
+})
+
+test('falls back to the plain crab for a costume key inherited from Object.prototype', () => {
+  for (const key of ['constructor', '__proto__']) assert.deepEqual(spriteOf(key), spriteOf('plain'), key)
 })

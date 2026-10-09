@@ -1,6 +1,7 @@
-// The crab follows Pixel Clawd as savvy-progress draws it (claude-kit, MIT License,
-// Copyright (c) 2026 johnnyvizz): a 24×18 crab on a 30×28 grid, legs in two
-// groups so a walk can lift them in turn. The costumes are this plugin's own.
+// The crab follows Pixel Clawd from DockCrab (Clawdy) as savvy-progress draws it
+// (claude-kit, MIT License, Copyright (c) 2026 johnnyvizz): a 24×18 crab on a
+// 30×28 grid, legs in two groups so a walk can lift them in turn. The costumes
+// are this plugin's own.
 
 export type Part = 'bd' | 'la' | 'lb'
 export type Pixel = readonly [x: number, y: number, w: number, h: number, color: string, part?: Part]
@@ -64,11 +65,12 @@ const BY_ROLE: Record<string, string> = {
 export function costumeOf(role: string): string {
   const bare = role.replace(/^[^:]*:/, '')
   if (/browser|playwright/i.test(bare)) return 'browser'
-  return BY_ROLE[bare] ?? 'plain'
+  return (Object.hasOwn(BY_ROLE, bare) ? BY_ROLE[bare] : undefined) ?? 'plain'
 }
 
 export function spriteOf(costume: string): readonly Pixel[] {
-  return [...BODY, ...(COSTUMES[costume] ?? (COSTUMES.plain as { props: readonly Pixel[] })).props]
+  const key = Object.hasOwn(COSTUMES, costume) ? costume : 'plain'
+  return [...BODY, ...(COSTUMES[key] as { props: readonly Pixel[] }).props]
 }
 
 export function pixelGrid(pixels: readonly Pixel[]): (string | null)[][] {
