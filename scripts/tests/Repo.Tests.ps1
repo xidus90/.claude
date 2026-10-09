@@ -33,6 +33,11 @@ Describe 'README' {
     It 'records that plugin state files are deliberately not versioned' {
         $script:Readme | Should -Match 'installed_plugins\.json'
     }
+    It 'documents how to start an agent-team run' {
+        # Without the starter line and the gate file nobody finds the way in.
+        $script:Readme | Should -Match 'claude-team\.ps1'
+        $script:Readme | Should -Match '\.claude/team-gate'
+    }
 }
 
 Describe 'global CLAUDE.md' {

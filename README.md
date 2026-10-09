@@ -136,6 +136,50 @@ Install-Skript stellt den Zustand daraus her.
 | `scripts/tests/` | Pester-5-Tests zu allem oben |
 | `docs/superpowers/` | Specs und Implementierungspläne |
 
+## Agent-Team
+
+Ein Gespann aus dreizehn Rollen (`agents/`) baut einen freigegebenen Plan als
+Agent-Team bis zum PR-reifen Feature-Zweig. Entwurf:
+`docs/.superpowers/specs/2026-10-08-agent-team-design.md`.
+
+**Voraussetzungen:** git ≥ 2.56, `uv`, und im Projekt eine Datei
+`.claude/team-gate` mit einer Zeile: dem Befehl, der das Tor des Projekts
+fährt (Tests, Lint, Coverage). Der verifier führt ihn aus.
+
+**Planen** — im Projekt:
+
+```
+claude --agent planner --teammate-mode in-process
+```
+
+Der planner führt durch Brainstorming, Spec und Plan, lässt beides vom
+verifier prüfen, holt die Freigaben ein und committet Spec und Plan auf einem
+neuen Feature-Zweig.
+
+**Bauen** — auf dem Feature-Zweig, Arbeitsbaum sauber:
+
+```
+pwsh -File "$HOME/.claude/scripts/claude-team.ps1" docs/.superpowers/plans/<plan>.md
+```
+
+Der Starter legt `<repo>/.team-runs/<lauf>/` an (von git ignoriert), schreibt
+die Settings des Laufs nach `~/.claude/team-settings/` (unversioniert) und
+startet den Orchestrator als Lead. Push und Merge bleiben beim Menschen.
+
+- Lead abgestürzt: `claude-team.ps1 -Resume <lauf>`
+- Lauf aufgeben und aufräumen: `claude-team.ps1 -Cleanup <lauf>` (Exit 1,
+  wenn etwas übrig bleibt)
+
+Die Hooks des Laufs (`scripts/team-gate.py`) prüfen Task-Titel, Urteile und
+Torprotokolle und verweigern Push, Merge, `--no-verify` und Löschen mit Zwang.
+Sie gelten nur in Sitzungen, die der Starter öffnet.
+
+**Tests:**
+
+```
+uv run --no-project --python 3.13 --with pytest --with pytest-cov --with pytest-xdist --with pyyaml pytest scripts/tests/teamgate -q -n 8 --cov=scripts --cov-branch --cov-fail-under=100
+```
+
 ## Tests
 
 ```powershell
