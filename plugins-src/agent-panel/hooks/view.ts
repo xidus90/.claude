@@ -216,4 +216,4 @@ export function toggle(set: Set<string>, key: string): void {
   else set.add(key)
 }
 
-export const isOpen = (panes: { id: string }[], id: string): boolean => panes.some((p) => p.id === id)
+export const isOpen = (panes: readonly { id: string }[], id: string): boolean => panes.some((p) => p.id === id)
