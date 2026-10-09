@@ -284,6 +284,10 @@ Bei `B<n>` und `F` beginnt die Kette mit `[fix]` statt `[impl]`.
   in `status.md`.
 - Nach der **dritten** Runde einer Wurzel fragt der Orchestrator den
   Menschen (`AskUserQuestion`), bevor eine vierte beginnt.
+- Antwortet der Mensch dabei mit der Option `Park <wurzel>`, ist die Wurzel
+  **geparkt** (Nachtrag `2026-10-09-parked-roots-design.md`): offene Tasks
+  geschlossen, keine neuen, ihr Zweig bleibt ungemergt und hält `final` nicht
+  auf.
 - Die Jagd endet, wenn **zwei Runden in Folge** keinen neuen bestätigten Fund
   bringen, spätestens nach **fünf** Runden; dann fragt der Orchestrator den
   Menschen, ob weitergejagt wird.
@@ -385,7 +389,7 @@ Jeder Team-Task folgt einer dieser Formen; `TaskCreated` lehnt andere ab.
 - **Live**: die Team-Task-Liste (`Ctrl+T` im Lead), mit den Nummern des Plans.
 - **Datei**: `TEAM_RUN_DIR/status.md`. Der Hook schreibt sie bei jedem
   angenommenen `TaskCreated` und `TaskCompleted` neu: je Wurzel der Zustand
-  (offen, impl, verify, review, fix Runde k, grün, gemergt) samt Urteilen,
+  (offen, impl, verify, review, fix Runde k, grün, gemergt, geparkt) samt Urteilen,
   und die Jagdrunden mit ihren Partitionen und Funden.
 - **Plan**: Die Checkboxen hakt der `final`-Schritt ab.
 
@@ -475,14 +479,15 @@ Umgebungsvariable.
 
 | Ereignis, Art | Exit 2, wenn … | sonst zusätzlich |
 |---|---|---|
-| `TaskCreated`, jede | … der Titel keiner Form aus Abschnitt 5 entspricht, oder bei `impl`/`fix` der Worktree der Wurzel fehlt | Register `created`; bei `impl`/`fix` mit `base_head` = HEAD des Worktrees |
+| `TaskCreated`, jede | … der Titel keiner Form aus Abschnitt 5 entspricht, die Wurzel geparkt ist, oder bei `impl`/`fix` der Worktree der Wurzel fehlt | Register `created`; bei `impl`/`fix` mit `base_head` = HEAD des Worktrees |
 | `TaskCompleted`, `impl`/`fix` | … `git status --porcelain` im Worktree nicht leer ist oder HEAD gleich `base_head` ist | Register `completed` |
 | `TaskCompleted`, `verify:impl`/`verify:fix`/`verify:rebase` | … das Urteil fehlt oder den Regeln widerspricht, das Torprotokoll fehlt oder nicht zum HEAD passt, oder das Protokoll rot ist und das Urteil `pass` sagt. Ein rotes Protokoll bei `fail` ist richtig, wenn ein `claim` „Tor grün“ `refuted` ist und das Protokoll als `evidence` trägt | Register `completed` |
 | `TaskCompleted`, übrige `review`/`verify`/`hunt` | … das Urteil fehlt oder den Regeln widerspricht | Register `completed` |
 | `TaskCompleted`, `merge` | … der Zweig der Wurzel kein Vorfahre des Feature-Zweigs ist, oder die Wurzel für den eingeholten HEAD nicht grün ist (Abschnitt 4; ein `verify:rebase` mit `pass` und passendem `inherits` ersetzt das Trio), oder für den eingeholten HEAD kein grünes Torprotokoll aus einem abgeschlossenen `verify:impl`/`verify:fix` mit `pass` oder einem abgeschlossenen `verify:rebase` vorliegt | Register `completed` |
-| `TaskCompleted`, `final` | … ein anderer Task offen ist (siehe unten), eine Wurzel kein abgeschlossenes `[merge]` hat, ihr Zweig kein Vorfahre des Feature-Zweigs ist, oder das jüngste `verify`-Urteil einer Wurzel `fail` ist | Register `completed` |
+| `TaskCompleted`, `final` | … ein anderer Task offen ist (siehe unten), eine Wurzel (geparkte ausgenommen) kein abgeschlossenes `[merge]` hat, ihr Zweig kein Vorfahre des Feature-Zweigs ist, oder das jüngste `verify`-Urteil einer Wurzel `fail` ist | Register `completed` |
 | `TaskCompleted`, `cleanup` | … das jüngste `[verify:final]` nicht `pass` ist, ein Worktree des Laufs noch eingetragen ist, ein Zweig `team/<lauf>/*` steht, der nicht in der Liste der Task-Beschreibung steht, oder der Laufordner noch existiert. Hier gibt es weder Sperre noch Register noch `status.md`: der Hook prüft nur | — |
 | `PostToolUse` auf `TaskUpdate` | — | löscht der Aufruf einen Task, Register `deleted` |
+| `PostToolUse` auf `AskUserQuestion` | … die Antwort `Park <wurzel>` lautet und die Wurzel nicht parkbar ist (nicht `T<n>`/`B<n>`, unbekannt, gemergt, schon geparkt), oder die Nutzlast keine Antworten trägt | Register `parked` und `superseded` für die offenen Tasks der Wurzel |
 
 **Offen** ist ein Task, der im Register weder `completed` noch `superseded`
 ist. `deleted` schließt nur Tasks der Arten `review`, `hunt` und `cleanup`;
@@ -663,9 +668,9 @@ bleibt (Entscheidung 2 in Abschnitt 14). Folgen für dieses Design:
 
 Vor dem Anlegen von `[cleanup]` ermittelt der Orchestrator
 `git branch --no-merged <feature_branch> --list "team/<lauf>/*"` und schreibt
-die Liste in die Task-Beschreibung. Erwartet ist sie leer, denn jede Wurzel
-ist gemergt und Jagd-Partitionen haben keinen Zweig; ein Eintrag ist ein
-Befund für den Bericht. Der cleaner arbeitet dann diese Schritte ab:
+die Liste in die Task-Beschreibung. Erwartet sind darin nur die Zweige
+geparkter Wurzeln, denn jede andere Wurzel ist gemergt und Jagd-Partitionen
+haben keinen Zweig; jeder andere Eintrag ist ein Befund für den Bericht. Der cleaner arbeitet dann diese Schritte ab:
 
 1. `git worktree remove <pfad>` für jeden Worktree unter
    `TEAM_RUN_DIR/worktrees/`, dann `git worktree prune`. Ohne `--force`:
@@ -697,7 +702,7 @@ Befund für den Bericht. Der cleaner arbeitet dann diese Schritte ab:
 | Rebase scheitert ohne Konflikt | Eskalation an den Menschen. |
 | Worktree lässt sich nicht entfernen | Meldung an den Lead, Entscheidung beim Menschen. |
 | Lead bricht ab | `claude-team -Resume <lauf>` (Abschnitt 7). |
-| Dritte Runde einer Wurzel vorbei | `AskUserQuestion` an den Menschen. |
+| Dritte Runde einer Wurzel vorbei | `AskUserQuestion` an den Menschen, mit der Option `Park <wurzel>`. |
 | Urteil oder Hook kaputt | Exit 2 mit Meldung; der Teammate korrigiert sein Urteil, der Task bleibt offen. |
 
 Verbote im Rumpf jedes Teammates: keine Prozesse nach Namen beenden, nur per
@@ -728,6 +733,7 @@ Teile, die an ihm hängen; fällt er durch, gilt der Rückfall.
 | 12 | Bei eingeschalteten Teams bleibt ein Agent-Aufruf ohne `name` ein gewöhnlicher Subagent und liefert sein Ergebnis an den Aufrufer. | Der planner startet mit `--settings`, das die Team-Variable auf `0` setzt. |
 | 13 | Mit git 2.56 gilt genau diese Form: `git branch --dry-run --delete-merged refs/heads/<feature> "team/<lauf>/*"` listet nur gemergte `team/<lauf>/*`-Zweige mit lokalem Upstream, ohne `--dry-run` löscht sie sie; ein ausgecheckter Zweig wird übersprungen; `git worktree remove` auf einen sauberen, losgelösten Worktree braucht kein `--force`. Am 2026-10-08 installiert war `2.54.0.vfs.0.4`; die Argumentreihenfolge stammt aus Sekundärquellen und git-branch(1) für 2.56 ist zu lesen. | `--merged` plus `-d` (Abschnitt 8). |
 | 14 | `claude -p --agent cleaner --permission-mode auto` darf `git worktree remove`, `git branch` und das Löschen im Laufordner ohne Rückfrage ausführen. | `--allowedTools` mit genau diesen Befehlen. |
+| 15 | `PostToolUse` auf `AskUserQuestion` trägt die Antwort des Menschen in `tool_response.answers`, und ein Aufrufer kann sie nicht vorgeben. Gemessen 2026-10-09 mit 2.1.295. | Parken nur durch den Menschen im eigenen Terminal (Nachtrag `2026-10-09-parked-roots-design.md`, Abschnitt 6). |
 
 ## 11. Bekannte Lücken
 

@@ -81,3 +81,7 @@ the refusal tells you which rule.
   "gate is green" is `refuted` and carries the gate log as its `output_file`.
 - Finding ids name target and role: `T3-code-F1`, `T3-sec-F1`, `T3-ver-F1`,
   `R1-P2-F4`. Bug numbers `B<n>` are the lead's to give.
+- A parked root (an event `{"event": "parked", "root": …, "question": …}` in
+  `tasks.jsonl`) has no `[merge]` and needs none. Its open tasks were closed
+  when it was parked; the hook refuses new ones. `[verify:final]` checks that
+  the report lists every parked root under `## Parked roots`.

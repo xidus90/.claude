@@ -47,6 +47,9 @@ writing a verdict. Your task title says what to judge:
   no `rm -r`).
 - `[verify:final] F`: the report and the plan checkboxes against the register,
   the verdicts and the feature branch; run the gate on the feature branch.
+  Every root with a `parked` event in `tasks.jsonl` must appear in the report's
+  `## Parked roots` with its question and branch; a parked root missing there,
+  or a root listed there without the event, is a confirmed defect.
 
 The gate log lives at `$TEAM_RUN_DIR/evidence/gate-<root>-<head>.txt`: line 1
 the full HEAD hash, line 2 the exit code, then the output. Write it and the

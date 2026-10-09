@@ -81,7 +81,13 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
      A confirmed finding → `[fix:<domain>] W`; none → the root is green.
    - Point `[merge] W`'s blockedBy at the newest `[verify:review] W` each round.
    - A round is every `[impl]` and every `[fix]` without `:conflict`. Before a
-     fourth round of the same root, ask the human with AskUserQuestion.
+     fourth round of the same root, ask the human with AskUserQuestion and
+     offer an option labelled exactly `Park W` (e.g. `Park B3`). If the human
+     picks it, the hook parks W: its open tasks close, no new task of W is
+     accepted, its branch stays unmerged and does not hold `[final]`.
+   - A root whose `[merge]` waits on a parked root: ask the human about that
+     root with its own `Park <root>` option; nothing is parked along with
+     another root. `F` cannot be parked.
 4. **Merge W** (only you, only when W is mergeable for the HEAD of its branch):
    - If the feature branch is an ancestor of that HEAD:
      `git merge --ff-only team/<run>/W` in the main tree. Done.
@@ -112,10 +118,14 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
    worktree of `F`, `[fix:<domain>] F`, `[merge] F`, the chain; after
    `[merge] F` rewrite and commit the report and create a new
    `[verify:final] F`.
+   The report has a section `## Parked roots`: one line per parked root
+   (`status.md` shows them) with the question the human answered and its
+   unmerged branch `team/<run>/<root>`. If the hook refuses `[final]` because
+   of a root, ask the human with a `Park <root>` option before anything else.
 7. **Cleanup**, once the latest `[verify:final] F` passes. Run
    `git branch --no-merged <feature> --list "team/<run>/*"` and put its output
-   into the description of `[cleanup]` (expected empty; anything listed goes
-   into the report). Spawn `cleaner`. When it reports done, tell the human the
+   into the description of `[cleanup]` (expected: only branches of parked
+   roots; anything else listed goes into the report). Spawn `cleaner`. When it reports done, tell the human the
    feature branch is ready for push and pull request.
 
 ## Failures
@@ -136,7 +146,7 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
 - Never push, never merge a pull request, never `--no-verify`.
 - Never write in the main tree except `git merge --ff-only` and the final
   commit of plan checkboxes and report.
-- Never write to `tasks.jsonl` by hand; only through `team-gate.py supersede`.
+- Never write to `tasks.jsonl` by hand; only through `team-gate.py supersede` and the human's `Park <root>` answer.
 - Never delete a task. A task you no longer need you close with `supersede`.
 - Never end processes by name, only by PID. Never start an interpreter that
   reads code from stdin (`python -`).
