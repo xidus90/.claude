@@ -139,8 +139,9 @@ lines = ["$cship.cost", "$cship.model"]' | Should -Be 2
         It 'shows the peak usage marker on a Pacific weekday when the window spans the day' {
             $pacificDay = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId(
                 [DateTime]::UtcNow, 'Pacific Standard Time').DayOfWeek
-            # ponytail: a render straddling Pacific midnight between Fri and Sat
-            # can disagree with this day; rerun if it ever flakes at 09:00 Berlin.
+            # ponytail: a render straddling Pacific midnight into Saturday or into
+            # Monday can disagree with this day; rerun if it flakes at 09:00 Berlin.
+            # On a Pacific weekend this only proves absence, not the wiring.
             $isWeekday = $pacificDay -notin 'Saturday', 'Sunday'
             $line = (Get-RenderedWithPeakWindow -Start 0 -End 24)[1]
             ($line -match 'Peak') | Should -Be $isWeekday
