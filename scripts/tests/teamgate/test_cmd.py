@@ -517,6 +517,14 @@ def test_a_hanging_alias_lookup_is_refused(world: World, monkeypatch: pytest.Mon
     assert check(world, "git status", tc.BASH) == "git alias lookup timed out"
 
 
+def test_a_delete_target_resolves_an_environment_variable(world: World, monkeypatch: pytest.MonkeyPatch) -> None:
+    # The value decides: the same line is allowed inside the run folder and refused outside it.
+    monkeypatch.setenv("TEAMGATE_PROBE_DIR", str(world.run.dir))
+    assert check(world, 'rm -r "$TEAMGATE_PROBE_DIR/evidence"', tc.BASH) is None
+    monkeypatch.setenv("TEAMGATE_PROBE_DIR", str(world.repo))
+    assert check(world, 'rm -r "$TEAMGATE_PROBE_DIR/evidence"', tc.BASH) is not None
+
+
 def test_unknown_assignments_have_their_own_reason(world: World) -> None:
     assert check(world, "read -r x < f; git status", tc.BASH) == "cannot tell which variables this command sets"
 
