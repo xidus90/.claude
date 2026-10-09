@@ -21,7 +21,9 @@ relevant output. Write nothing in the repository.
 ## As a teammate (your prompt names a run folder)
 
 Read the verdict rules (`verdicts.md`, path in your spawn prompt) before
-writing a verdict. Your task title says what to judge:
+writing a verdict. When you confirm a defect, grade its severity by the levels
+in `verdicts.md` yourself; if your grade differs from the finder's, say why in
+one sentence in the `claim`. Your task title says what to judge:
 
 - `[verify:impl] W`, `[verify:fix] W`: the implementer's claims, probed in
   the worktree of W. RED: put the changed non-test files back to the state
@@ -50,6 +52,9 @@ writing a verdict. Your task title says what to judge:
   Every root with a `parked` event in `tasks.jsonl` must appear in the report's
   `## Parked roots` with its question and branch; a parked root missing there,
   or a root listed there without the event, is a confirmed defect.
+  Every defect confirmed as `low` in the run's verdicts must appear in the
+  report's `## Deferred findings (low)`; a missing one is a confirmed `medium`
+  defect.
 
 The gate log lives at `$TEAM_RUN_DIR/evidence/gate-<root>-<head>.txt`: line 1
 the full HEAD hash, line 2 the exit code, then the output. Write it and the

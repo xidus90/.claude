@@ -229,7 +229,7 @@ Jede Wurzel durchläuft dieselbe Kette und hat einen eigenen Worktree
 ```
 [impl] W ─> [verify:impl] W ─> [review:code] W ┐
                               └> [review:security] W ┴─> [verify:review] W
-   bestätigter Befund: [fix] W ─> [verify:fix] W ─> beide Reviews ─> [verify:review] W …
+   bestätigter Befund ab medium: [fix] W ─> [verify:fix] W ─> beide Reviews ─> [verify:review] W …
    keiner:             [merge] W
 ```
 
@@ -263,8 +263,9 @@ Bei `B<n>` und `F` beginnt die Kette mit `[fix]` statt `[impl]`.
    Partition `n` ein Task `[hunt] R<r>.P<n> <partition>` mit eigenem,
    zweiglosem Worktree (Abschnitt 8). Der bug-hunter committet seine roten
    Repro-Tests dort und legt je Fund einen Patch unter `evidence/` ab. Jeden Fund nummeriert der Orchestrator als `B<n>` und legt
-   `[verify:hunt] B<n>` an. Bestätigt der verifier, beginnt die Kette von
-   `B<n>` mit einem eigenen Worktree. Ein Fund, den der verifier als Dublette
+   `[verify:hunt] B<n>` an. Urteilt der verifier `fail` (bestätigt ab
+   `medium`), beginnt die Kette von `B<n>` mit einem eigenen Worktree; ein
+   bestätigter `low`-Fund geht in den Bericht. Ein Fund, den der verifier als Dublette
    markiert (`duplicate_of`), ist nicht neu.
 4. **final**: Der Orchestrator fährt das Tor auf dem Feature-Zweig selbst,
    hakt die Plan-Checkboxen ab, schreibt `report.md` nach
@@ -289,7 +290,7 @@ Bei `B<n>` und `F` beginnt die Kette mit `[fix]` statt `[impl]`.
   geschlossen, keine neuen, ihr Zweig bleibt ungemergt und hält `final` nicht
   auf.
 - Die Jagd endet, wenn **zwei Runden in Folge** keinen neuen bestätigten Fund
-  bringen, spätestens nach **fünf** Runden; dann fragt der Orchestrator den
+  ab `medium` bringen, spätestens nach **fünf** Runden; dann fragt der Orchestrator den
   Menschen, ob weitergejagt wird.
 
 ### Diagramm
@@ -326,7 +327,7 @@ flowchart TD
             VI -- "pass" --> RS["security-reviewer"]
             RC --> VR{"verify:review"}
             RS --> VR
-            VR -- "Befund bestätigt" --> FX
+            VR -- "Befund ab medium bestätigt" --> FX
             FX --> VF{"verify:fix, Torprotokoll"}
             VF -- "fail" --> FX
             VF -- "pass" --> RC
@@ -344,7 +345,7 @@ flowchart TD
 
         subgraph BH["Bug-Jagd: 2 Runden ohne Neues, höchstens 5"]
             HUNT["bug-hunter je Partition, eigener Worktree: Repro-Patch"] --> VH{"verify:hunt B"}
-            VH -- "bestätigt" --> BCHAIN["Kette der Wurzel B"]
+            VH -- "ab medium bestätigt" --> BCHAIN["Kette der Wurzel B"]
             BCHAIN --> HUNT
             VH -- "nichts Neues" --> DRY(("trocken"))
         end
@@ -432,7 +433,10 @@ Regeln, die der Hook prüft:
 - **Review-Urteile** (`review:code`, `review:security`) tragen kein `verdict`,
   nur `findings` mit `status: open`.
 - **`verify`-Urteile** tragen `verdict` (`pass`/`fail`). Es ist `fail`,
-  sobald ein `defect` `confirmed` oder ein `claim` `refuted` ist; sonst
+  sobald ein `defect` der Schwere `medium`, `high` oder `critical`
+  `confirmed` oder ein `claim` `refuted` ist; ein bestätigter `low`-Befund geht
+  in den Bericht (Nachtrag `2026-10-09-scope-and-cleanup-design.md`, Stufen in
+  `docs/agent-team/verdicts.md`); sonst
   `pass`. `verify:review` nennt in `judges` die beiden Review-Tasks, die es
   geprüft hat; beide müssen denselben `head` tragen.
 - **`verify:rebase`** trägt zusätzlich `rebased_from` (der alte HEAD),
@@ -572,7 +576,8 @@ Befehlsprüfung nicht (Abschnitt 11).
    weil der cleaner ihn löscht. Darin:
    - `env`: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`,
      `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`, `TEAM_RUN_DIR=<lauf>` (für die Bash
-     der Teammates);
+     der Teammates), `PYTHONDONTWRITEBYTECODE=1` (kein `__pycache__` in den
+     Worktrees);
    - `hooks`: die Einträge aus Abschnitt 6, je mit `--run <lauf>`;
    - `permissions.deny` für `git push`, `gh pr merge` und
      `git commit --no-verify` in `Bash(...)`- und `PowerShell(...)`-Form als
@@ -670,7 +675,9 @@ Vor dem Anlegen von `[cleanup]` ermittelt der Orchestrator
 `git branch --no-merged <feature_branch> --list "team/<lauf>/*"` und schreibt
 die Liste in die Task-Beschreibung. Erwartet sind darin nur die Zweige
 geparkter Wurzeln, denn jede andere Wurzel ist gemergt und Jagd-Partitionen
-haben keinen Zweig; jeder andere Eintrag ist ein Befund für den Bericht. Der cleaner arbeitet dann diese Schritte ab:
+haben keinen Zweig; jeder andere Eintrag ist ein Befund für den Bericht.
+Bytecode verhindert der Starter (`PYTHONDONTWRITEBYTECODE`); andere Caches des
+Tors gehören in die `.gitignore` des Projekts. Der cleaner arbeitet dann diese Schritte ab:
 
 1. `git worktree remove <pfad>` für jeden Worktree unter
    `TEAM_RUN_DIR/worktrees/`, dann `git worktree prune`. Ohne `--force`:

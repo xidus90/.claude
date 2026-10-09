@@ -45,6 +45,19 @@ the refusal tells you which rule.
 }
 ```
 
+## Severity
+
+- `medium`: breaks a promise of the spec or the plan, gives a wrong result on
+  realistic input, or is an exploitable security hole.
+- `high`: the same with a large effect (a core promise of the spec, data loss).
+- `critical`: code execution, loss or disclosure of data without the user's
+  doing, or a run that no longer works at all.
+- `low`: everything beyond that — hardening the spec does not ask for, test
+  quality, comments, style, input with no realistic cause.
+
+An exploitable security hole is never `low`. The verifier grades anew when it
+confirms; its grade is the one that counts.
+
 ## Rules
 
 - `task_id` and `subject` are exactly those of your task; `role` is your role
@@ -55,8 +68,10 @@ the refusal tells you which rule.
 - **Reviews** (`review:code`, `review:security`) and **hunts** carry no
   `verdict`. Every finding has `status: "open"`. A hunt finding also carries
   `"patch": "evidence/g<gen>-R<r>-P<n>-F<k>.patch"`, the red repro test.
-- **Verify** verdicts carry `verdict`: `fail` exactly when a `defect` is
-  `confirmed` or a `claim` is `refuted`, otherwise `pass`. Every finding is
+- **Verify** verdicts carry `verdict`: `fail` exactly when a `defect` of
+  severity `medium`, `high` or `critical` is `confirmed` or a `claim` is
+  `refuted`, otherwise `pass`. A confirmed `low` defect goes to the report,
+  not into a round. Every finding is
   `confirmed` or `refuted`, each with `evidence` (`command` plus an
   `output_file` that exists under the run folder and is not empty). No probe,
   no `confirmed`.

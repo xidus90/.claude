@@ -78,7 +78,8 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
    - Pass → `[review:code] W` → `code-reviewer` and `[review:security] W` →
      `security-reviewer`, in parallel.
    - Both done → `[verify:review] W` → `verifier`, naming both review task ids.
-     A confirmed finding → `[fix:<domain>] W`; none → the root is green.
+     A failing `[verify:review] W` → `[fix:<domain>] W`; a passing one → the
+     root is green (confirmed `low` findings go to the report).
    - Point `[merge] W`'s blockedBy at the newest `[verify:review] W` each round.
    - A round is every `[impl]` and every `[fix]` without `:conflict`. Before a
      fourth round of the same root, ask the human with AskUserQuestion and
@@ -106,10 +107,13 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
    `[hunt] R<r>.P<n> <partition>` → `bug-hunter`. For every finding in the
    hunt verdicts give the next free bug number `B<n>` and create
    `[verify:hunt] B<n>` → `verifier`, naming the finding and its patch.
-   Confirmed and not `duplicate_of` → worktree of `B<n>`,
+   A failing `[verify:hunt] B<n>` (a confirmed defect of `medium` or worse, not
+   `duplicate_of`) → worktree of `B<n>`,
    `[fix:<domain>] B<n> <claim>` with the patch path, `[merge] B<n>`, and the
-   chain. Stop hunting after two rounds in a row without a new confirmed
-   finding, or after five rounds — then ask the human whether to go on.
+   chain. A confirmed `low` finding gets no root; it goes to the report.
+   Stop hunting after two rounds in a row without a new confirmed finding of
+   `medium` or worse, or after five rounds — then ask the human whether to go
+   on.
 6. **Final.** Run the command in `.claude/team-gate` on the feature branch in
    the main tree; it must exit 0. Tick the plan checkboxes, write the report to
    `docs/.superpowers/reports/<date>-<plan name>.md` (roots, rounds, verdicts,
@@ -122,6 +126,8 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
    (`status.md` shows them) with the question the human answered and its
    unmerged branch `team/<run>/<root>`. If the hook refuses `[final]` because
    of a root, ask the human with a `Park <root>` option before anything else.
+   The report also has `## Deferred findings (low)`: one line per defect a
+   verify verdict confirmed as `low`, with its id, root and claim.
 7. **Cleanup**, once the latest `[verify:final] F` passes. Run
    `git branch --no-merged <feature> --list "team/<run>/*"` and put its output
    into the description of `[cleanup]` (expected: only branches of parked
