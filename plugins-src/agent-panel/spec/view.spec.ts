@@ -346,6 +346,14 @@ test('caps a long text by code points, so a pair of surrogates is never cut in t
   assert.equal(exact, 'x'.repeat(100))
 })
 
+test('reads only a bounded prefix of a text, so a huge one costs no more than a long one', () => {
+  const v = buildView(input(plain([lead({}), agent({ name: `${' '.repeat(400)}tail` }), agent({ id: 'b', name: 'x'.repeat(2_000_000) })])))
+  const [padded, huge] = (v.groups[1]?.rows ?? []).map((r) => r.label)
+  // Four hundred blanks fill the prefix, so what follows is never read.
+  assert.equal(padded, '')
+  assert.equal(huge, `${'x'.repeat(99)}…`)
+})
+
 test('caps the script error notice at the same length as every other text', () => {
   const v = buildView(input(null, { error: `summarize exit 1: ${'E'.repeat(300)}` }))
   assert.equal(v.notices[0], `⚠ summarize exit 1: ${'E'.repeat(81)}…`)
