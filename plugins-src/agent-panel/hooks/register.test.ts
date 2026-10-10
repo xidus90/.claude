@@ -300,6 +300,20 @@ test('fold all and unfold all close and open every group', async ($, on) => {
   expect(await ui.find({ key: 'r-lead:s1' })).toBeDefined()
 })
 
+test('a role whose agents are all done keeps its head and cost bar when finished rows are hidden', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(NARROW('terminal'))
+  await ui.press({ key: 'hide-done' })
+  expect(await ui.find({ key: 'g-implementer-backend' })).toBeDefined()
+  expect(await ui.find({ key: 'cost-implementer-backend' })).toBeDefined()
+  expect(await ui.find({ key: 'r-a1' })).toBeUndefined()
+})
+
 test('a new team run reopens the panel after it was closed', async ($, on) => {
   mock.clock(on)
   const opened: string[] = []

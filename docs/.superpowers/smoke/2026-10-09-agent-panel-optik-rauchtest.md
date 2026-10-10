@@ -33,7 +33,7 @@ bleibt leer, bis jemand es gesehen hat.
   ausklappen“ wirken auf alle. Beobachtung: offen — vom Nutzer.
 - [ ] **„Fertige ausblenden“.** Erwartung: ✓-Zeilen verschwinden in allen
   Rollen; eine Rolle, deren Agents alle fertig sind, zeigt dann nur ihren
-  Kopf. Erneutes Klicken blendet die Zeilen wieder ein. Beobachtung: offen — vom Nutzer.
+  Kopf und den Kostenbalken. Erneutes Klicken blendet die Zeilen wieder ein. Beobachtung: offen — vom Nutzer.
 
 ## Öffnen
 

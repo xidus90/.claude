@@ -119,7 +119,7 @@ Keine Legende am Ende.
 - Rolle: Krabbe, Name, Zähler, Kosten.
 
 „Fertige ausblenden“ blendet ✓-Zeilen in allen Rollen aus; eine Rolle, deren
-Agents alle fertig sind, zeigt dann nur ihren Kopf.
+Agents alle fertig sind, zeigt dann nur ihren Kopf und den Kostenbalken.
 
 ### Zustand
 
