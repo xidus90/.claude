@@ -263,3 +263,31 @@ Entwürfe.
 - **Von Hand**, Protokoll unter `docs/.superpowers/smoke/`: Desktop und
   Terminal je hell und dunkel, schmales und breites Panel, ein Lauf mit vielen
   Agents.
+
+## 9. Nachtrag 2026-10-10: Angleichung an den Entwurf
+
+Der erste Stand wich in der Desktop-App sichtbar von `entwurf-v5.html` und
+`einklappen-v4.html` ab. Was hier steht, geht den Abschnitten 3–5 vor.
+
+- **Breite:** Balken, Streifen und die Trennlinie sind SVGs mit 1600 px
+  eigener Breite und `preserveAspectRatio="none"`, die `height` wird als Prop
+  mitgegeben. Der Host zeichnet sie auf die Breite des Platzes, also gestreckt.
+  Die runden Enden sind für ein Panel von 560 px bemessen. Gemessen in
+  Chromium am 2026-10-10: Auch ein SVG ohne `viewBox` wird nur in der Breite
+  gestreckt, Text darin also gestaucht.
+- **Kacheln** sind deshalb `Box`/`Text` mit dem Kachel-Hintergrund, kein SVG.
+- **Breit:** In der Desktop-App gilt das Panel immer als breit (Krabben,
+  Werkzeuge neben der Überschrift); die 70-Spalten-Schwelle gilt nur im
+  Terminal.
+- **Abschnittsköpfe** in grauen Großbuchstaben (`▾ ÜBERSICHT`, `▾ AGENTS`),
+  über „Agents“ eine Trennlinie (Desktop: SVG, Terminal: `─`).
+- **Werkzeuge** sind echte Knöpfe (`variant` `secondary`); „Fertige
+  ausblenden“ ist eingeschaltet `primary`.
+- **Farbig:** Token-Legende (■ in der Token-Farbe, Zahl fett, über die Breite
+  verteilt), Statuszeile (verteilt) und die Zähler im Rollenkopf und im
+  eingeklappten „Agents“-Kopf.
+- **Agent-Zeile:** Modell, Effort, Kosten und Dauer rechtsbündig.
+- **Karten** in der Desktop-App mit eigenem Hintergrund und Rand
+  (hell `#ffffff`/`#e9e7e2`, dunkel `#262523`/`#3a3936`); im Terminal nicht.
+- **Titel** `Lauf <id>`, dahinter gedimmt `· Gen 1–n`.
+- **Krabbe** 36×34 px wie im Entwurf.

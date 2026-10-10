@@ -210,7 +210,7 @@ test('a failed pane listing does not stop later ticks', async ($, on) => {
   expect(await ui.find({ type: 'Text', text: /^Kosten ≈ \$0\.02/ })).toBeDefined()
 })
 
-test('the desktop draws SVG pieces and a crab per role when wide', async ($, on) => {
+test('the desktop draws SVG pieces and a crab per role at any width', async ($, on) => {
   const clock = mock.clock(on)
   stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
   on('config.list', () => ({ value: [{ key: 'theme', value: 'dark' }] }))
@@ -218,15 +218,16 @@ test('the desktop draws SVG pieces and a crab per role when wide', async ($, on)
   await $.command.run(TOGGLE)
   await clock.advance(2000)
   const ui = await $.ui.mount(WIDE('desktop'))
-  expect(await ui.find({ key: 'svg-tiles' })).toBeDefined()
+  expect(await ui.find({ key: 'tiles' })).toBeDefined()
   expect(await ui.find({ key: 'crab-implementer-backend' })).toBeDefined()
   expect(await ui.find({ type: 'Svg' })).toBeDefined()
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn.includes(DARK.tile)).toBe(true)
   expect(drawn.includes(LIGHT.tile)).toBe(false)
   await ui.unmount()
+  // The desktop lays out in pixels, so a pane of few columns still has room for the crab.
   const narrow = await $.ui.mount(NARROW('desktop'))
-  expect(await narrow.find({ key: 'crab-implementer-backend' })).toBeUndefined()
+  expect(await narrow.find({ key: 'crab-implementer-backend' })).toBeDefined()
 })
 
 test('the terminal draws block bars and raster crabs when wide', async ($, on) => {
@@ -441,11 +442,11 @@ test('an escape sequence in an agent id does not make the host refuse the pane, 
     expect(await ui.find({ key: 'r-x\u001b[31m1' })).toBeDefined()
     await ui.unmount()
   }
-  // The wide scene draws every kind of Svg, and none of them names a key: tiles, status, cost and token bars, crabs.
+  // The wide scene draws every kind of Svg, and none of them names a key: status, cost and token bars, crabs, the rule.
   const drawn = JSON.stringify(await (await $.ui.mount(WIDE('desktop'))).drawn())
   const alts = [...new Set([...drawn.matchAll(/"alt":"([^"]*)"/g)].map((m) => m[1]))].sort()
   expect(alts).toEqual([
-    'Kostenanteil', 'Krabbe Lead (Orchestrator)', 'Krabbe implementer-backend', 'Statusverteilung', 'Tokenverteilung', '≈ $0.05 · 4k · 0:02',
+    'Kostenanteil', 'Krabbe Lead (Orchestrator)', 'Krabbe implementer-backend', 'Statusverteilung', 'Tokenverteilung', 'Trennlinie',
   ])
 })
 
@@ -458,7 +459,7 @@ test('a failed theme read falls back to the light palette and still draws', asyn
   await clock.advance(2000)
   const ui = await $.ui.mount(WIDE('desktop'))
   // A failed theme read falls back to light and still draws.
-  expect(await ui.find({ key: 'svg-tiles' })).toBeDefined()
+  expect(await ui.find({ key: 'tiles' })).toBeDefined()
   const drawn = JSON.stringify(await ui.drawn())
   expect(drawn.includes(LIGHT.tile)).toBe(true)
   expect(drawn.includes(DARK.tile)).toBe(false)
@@ -524,7 +525,7 @@ test('each agent row of a card keeps a blank line above it, after the cost bar a
   for (const r of rows) expect(r.props.marginTop).toBe(1)
 })
 
-test('the role cards keep a line of space between them, and the Agents block one above it', async ($, on) => {
+test('the role cards keep a line of space between them, and the Agents block one above its rule', async ($, on) => {
   const clock = mock.clock(on)
   stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
   on('config.list', () => ({ value: [] }))
@@ -534,7 +535,7 @@ test('the role cards keep a line of space between them, and the Agents block one
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount(WIDE(surface))
     expect((await ui.find({ key: 'cards' }))?.props.rowGap).toBe(1)
-    expect((await ui.find({ key: 'agents-head' }))?.props.marginTop).toBe(1)
+    expect((await ui.find({ key: 'rule-agents' }))?.props.marginTop).toBe(1)
     await ui.unmount()
   }
 })
@@ -556,4 +557,85 @@ test('a narrow pane puts the Agents buttons on a row of their own that wraps', a
   await ui.unmount()
   ui = await $.ui.mount(WIDE('terminal'))
   expect(await sameRow()).toBe(true)
+})
+
+const TWO_GENS = JSON.stringify({ runId: 'r1', generations: ['s1', 's2'], agents: [LEAD, { ...LEAD, id: 'lead:s2', sessionId: 's2' }, AGENT], unreadableLines: 0, problems: [] })
+
+async function shown($: Parameters<Parameters<typeof test>[1]>[0], on: Parameters<Parameters<typeof test>[1]>[1], stdout: string, theme = 'dark') {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [{ key: 'theme', value: theme }] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+}
+
+test('the title names the run and, dimmed after a dot, its generations', async ($, on) => {
+  await shown($, on, TWO_GENS)
+  const ui = await $.ui.mount(NARROW('terminal'))
+  expect(await ui.find({ type: 'Text', text: 'Lauf r1' })).toBeDefined()
+  const gens = await ui.find({ type: 'Text', text: ' · Gen 1–2' })
+  expect(gens?.props.dimColor).toBe(true)
+})
+
+test('the desktop stretches every SVG piece to the pane at a fixed height', async ($, on) => {
+  await shown($, on, TEAM)
+  const ui = await $.ui.mount(NARROW('desktop'))
+  const svgs = (await ui.findAll({ type: 'Svg' })).filter((s) => !String(s.props.alt).startsWith('Krabbe'))
+  expect(svgs.length).toBeGreaterThan(0)
+  for (const s of svgs) expect(typeof s.props.height).toBe('number')
+})
+
+test('the section heads read in capitals, and a rule sets the Agents section apart', async ($, on) => {
+  await shown($, on, TEAM)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount(NARROW(surface))
+    expect(await ui.find({ type: 'Text', text: '▾ ÜBERSICHT' })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: '▾ AGENTS' })).toBeDefined()
+    expect(await ui.find({ key: 'rule-agents' })).toBeDefined()
+    await ui.unmount()
+  }
+})
+
+test('the legend and the status line colour each part and spread over the width', async ($, on) => {
+  await shown($, on, TEAM)
+  const ui = await $.ui.mount(NARROW('terminal'))
+  expect((await ui.find({ key: 'legend' }))?.props.justifyContent).toBe('space-between')
+  expect((await ui.find({ key: 'status-line' }))?.props.justifyContent).toBe('space-between')
+  expect((await ui.find({ type: 'Text', text: '✓ fertig 1' }))?.props.color).toBe('#2f8a52')
+  expect((await ui.find({ type: 'Text', text: '■ ' }))?.props.color).toBe('#8f8cf4')
+  expect((await ui.find({ type: 'Text', text: '2k' }))?.props.bold).toBe(true)
+})
+
+test('a role head colours its counts', async ($, on) => {
+  await shown($, on, TEAM)
+  const ui = await $.ui.mount(NARROW('terminal'))
+  const head = await ui.find({ key: 'g-implementer-backend' })
+  expect(JSON.stringify(head)).toContain('#2f8a52')
+})
+
+test('an agent row puts its model, cost and time at the right edge', async ($, on) => {
+  await shown($, on, TEAM)
+  const ui = await $.ui.mount(NARROW('terminal'))
+  const line = await ui.find({ key: 'line-a1' })
+  expect(line?.props.justifyContent).toBe('space-between')
+})
+
+test('the desktop gives the cards a background and border of the palette, the terminal neither', async ($, on) => {
+  await shown($, on, TEAM)
+  const desktop = await $.ui.mount(NARROW('desktop'))
+  const card = await desktop.find({ key: 'card-implementer-backend' })
+  expect([card?.props.backgroundColor, card?.props.borderColor]).toEqual([DARK.card, DARK.border])
+  await desktop.unmount()
+  const terminal = await $.ui.mount(NARROW('terminal'))
+  expect((await terminal.find({ key: 'card-implementer-backend' }))?.props.backgroundColor).toBeUndefined()
+})
+
+test('the Agents tools are real buttons, and hiding finished rows marks its button as on', async ($, on) => {
+  await shown($, on, TEAM)
+  const ui = await $.ui.mount(NARROW('desktop'))
+  expect((await ui.find({ key: 'hide-done' }))?.props.plain).toBeUndefined()
+  expect((await ui.find({ key: 'hide-done' }))?.props.variant).toBe('secondary')
+  await ui.press({ key: 'hide-done' })
+  expect((await ui.find({ key: 'hide-done' }))?.props.variant).toBe('primary')
 })

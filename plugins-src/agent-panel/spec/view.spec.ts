@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildView, countsLine, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, sharesOf, startError, statusLine, dirsOf, toggle, visibleRows, moreLine, type ViewInput } from '../hooks/view.ts'
+import { buildView, countItems, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, sharesOf, startError, statusItems, dirsOf, toggle, visibleRows, moreLine, type ViewInput } from '../hooks/view.ts'
 import type { AgentSummary, Summary } from '../shared/summary.ts'
 
 const MIN = 60_000
@@ -50,6 +50,7 @@ test('groups a team run by role, running groups first, then by cost', () => {
   assert.deepEqual(v.groups[1]?.rows.map((r) => [r.glyph, r.label]), [['●', 'impl T2'], ['✓', 'impl T1']])
   assert.equal(v.groups[1]?.cost, '$0.80')
   assert.equal(v.title, 'Lauf r1')
+  assert.equal(v.subtitle, '')
 })
 
 test('lists a plain session flat, under Lead and Agents, by start time', () => {
@@ -84,7 +85,8 @@ test('shows the current lead as running and earlier leads by their transcript', 
     lead({ id: 'lead:s4', sessionId: 's4', end: 'answered' }),
   ], ['s1', 's2', 's3', 's4'])))
   assert.deepEqual(v.groups[0]?.rows.map((r) => [r.label, r.glyph]), [['Gen 1', '✓'], ['Gen 2', '✗'], ['Gen 3', '⊘'], ['Gen 4', '●']])
-  assert.equal(v.title, 'Lauf r1 (Gen 1–4)')
+  assert.equal(v.title, 'Lauf r1')
+  assert.equal(v.subtitle, 'Gen 1–4')
 })
 
 test('sums wall-clock time per generation, without the pause between them and without double-counting parallel agents', () => {
@@ -131,7 +133,7 @@ test('lists script errors, unreadable lines and problems as notices', () => {
 
 test('says it is loading before the first summary, and shows only the error if that failed', () => {
   assert.deepEqual(buildView(input(null)), {
-    title: 'Agents', totals: 'lade …', counts: '', notices: [], groups: [], status: { running: 0, done: 0, failed: 0, aborted: 0 },
+    title: 'Agents', subtitle: '', totals: 'lade …', counts: '', notices: [], groups: [], status: { running: 0, done: 0, failed: 0, aborted: 0 },
     overview: { cost: '≈ $0.00', tokens: '0', time: '0:00', shares: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, amounts: { input: '0', output: '0', cacheRead: '0', cacheWrite: '0' }, line: '', unpriced: '' },
   })
   assert.deepEqual(buildView(input(null, { error: 'node nicht gefunden: x' })).notices, ['⚠ node nicht gefunden: x'])
@@ -339,11 +341,14 @@ test('builds the overview with amounts per token kind and a one-line summary', (
   assert.ok(Math.abs(v.overview.shares.cacheRead - 1_260_000 / 1_800_000) < 1e-9)
 })
 
-test('words the status counts as a line and as a short summary', () => {
+test('words the status counts in full and short, each part with its status', () => {
   const c = { running: 2, done: 9, failed: 1, aborted: 0 }
-  assert.equal(statusLine(c), '● läuft 2   ✓ fertig 9   ✗ gescheitert 1   ⊘ abgebrochen 0')
-  assert.equal(countsLine(c), '● 2  ✓ 9  ✗ 1')
-  assert.equal(countsLine({ running: 0, done: 3, failed: 0, aborted: 2 }), '● 0  ✓ 3  ⊘ 2')
+  assert.deepEqual(statusItems(c), [
+    { status: 'running', text: '● läuft 2' }, { status: 'done', text: '✓ fertig 9' },
+    { status: 'failed', text: '✗ gescheitert 1' }, { status: 'aborted', text: '⊘ abgebrochen 0' },
+  ])
+  assert.deepEqual(countItems(c), [{ status: 'running', text: '● 2' }, { status: 'done', text: '✓ 9' }, { status: 'failed', text: '✗ 1' }])
+  assert.deepEqual(countItems({ running: 0, done: 3, failed: 0, aborted: 2 }).map((i) => i.text), ['● 0', '✓ 3', '⊘ 2'])
 })
 
 test('hides finished rows on request', () => {
@@ -410,7 +415,7 @@ test('leaves no control character in any text of the view', () => {
     agent({ id: 'f', task: DIRTY, model: DIRTY, effort: DIRTY, end: 'error', errorText: DIRTY }),
     agent({ id: 'd', role: DIRTY, task: DIRTY, model: DIRTY, effort: DIRTY }),
   ]), { error: DIRTY }))
-  const texts = [v.title, v.totals, v.counts, ...v.notices]
+  const texts = [v.title, v.subtitle, v.totals, v.counts, ...v.notices]
   for (const g of v.groups) {
     texts.push(g.title, g.key, g.role, groupLine(g, false))
     for (const r of g.rows) texts.push(r.label, r.model, r.effort, r.note, r.meta, rowLine(r), detailLine(r))
