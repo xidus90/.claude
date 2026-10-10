@@ -172,7 +172,7 @@ export const register: Register = (on) => {
     const redraw = () => $.ui.invalidate('ui.render')
     let v: View
     try {
-      v = buildView({ summary, live, reportedCostUsd: reported, costIncludesAgents: REPORTED_COST_INCLUDES_AGENTS, now: await $.clock.now(), error })
+      v = buildView({ summary, live, reportedCostUsd: reported, costIncludesAgents: REPORTED_COST_INCLUDES_AGENTS, now: await $.clock.now(), error, foreign: null })
     } catch (err) {
       return Text({ color: 'warning', children: [`⚠ ${err instanceof Error ? err.message : String(err)}`] })
     }

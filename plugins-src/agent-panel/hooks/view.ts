@@ -1,4 +1,4 @@
-import type { AgentSummary, Summary, TokenCounts } from '../shared/summary.ts'
+import type { AgentSummary, SessionInfo, Summary, TokenCounts } from '../shared/summary.ts'
 
 export type LiveAgent = { id: string; status: string }
 export type Glyph = '●' | '✓' | '✗' | '⊘'
@@ -17,7 +17,7 @@ export type Overview = {
 }
 export type Row = { key: string; glyph: Glyph; status: Status; label: string; model: string; effort: string; cost: string; tokens: string; time: string; note: string; detail: string; shares: Shares; meta: string }
 export type Group = { key: string; role: string; title: string; cost: string; tokens: string; time: string; costUsd: number; costShare: number; isRunning: boolean; counts: StatusCounts; rows: Row[] }
-export type View = { title: string; totals: string; counts: string; notices: string[]; groups: Group[]; status: StatusCounts; overview: Overview }
+export type View = { title: string; subtitle: string; totals: string; counts: string; notices: string[]; groups: Group[]; status: StatusCounts; overview: Overview }
 export type ViewInput = {
   summary: Summary | null
   live: LiveAgent[]
@@ -25,6 +25,8 @@ export type ViewInput = {
   costIncludesAgents: boolean
   now: number
   error: string
+  /** Another session picked in the panel: shown from its transcript alone. */
+  foreign: { title: string; isLive: boolean } | null
 }
 
 const MISMATCH = 0.1
@@ -88,8 +90,10 @@ function byTranscript(a: AgentSummary): Glyph {
   return a.end === 'error' ? '✗' : a.end === 'answered' ? '✓' : '⊘'
 }
 
-function glyphOf(a: AgentSummary, live: Map<string, string>, current: string): Glyph {
-  if (a.kind === 'lead') return a.sessionId === current ? '●' : byTranscript(a)
+function glyphOf(a: AgentSummary, live: Map<string, string>, current: string, foreign: ViewInput['foreign']): Glyph {
+  // Another session has no live signal; its lead runs while its transcript is fresh.
+  if (a.kind === 'lead' && a.sessionId === current) return foreign && !foreign.isLive ? byTranscript(a) : '●'
+  if (a.kind === 'lead') return byTranscript(a)
   const status = live.get(a.id)
   // Unknown statuses are new ways of being alive; the done ones are listed.
   if (status !== undefined) return LIVE[status] ?? '●'
@@ -138,13 +142,16 @@ export function buildView(input: ViewInput): View {
   const notices = error ? [`⚠ ${error}`] : []
   const raw = input.summary
   const s = raw && { ...raw, runId: raw.runId === null ? null : tidy(raw.runId), agents: raw.agents.map(tidyAgent), problems: raw.problems.map(tidy) }
-  if (!s) return { title: 'Agents', totals: error ? '' : 'lade …', counts: '', notices, groups: [], status: noCounts(), overview: emptyOverview() }
+  const subtitle = input.foreign ? 'nur aus dem Transkript' : ''
+  // What Claude Code reports is this session's cost, never another's.
+  const reportedCostUsd = input.foreign ? null : input.reportedCostUsd
+  if (!s) return { title: 'Agents', subtitle, totals: error ? '' : 'lade …', counts: '', notices, groups: [], status: noCounts(), overview: emptyOverview() }
   if (s.unreadableLines > 0) notices.push(`⚠ ${s.unreadableLines} Zeilen unlesbar`)
   for (const p of s.problems) notices.push(`⚠ ${p}`)
 
   const current = s.generations[s.generations.length - 1] as string
   const live = new Map(input.live.map((l) => [l.id, l.status]))
-  const glyphs = new Map(s.agents.map((a) => [a, glyphOf(a, live, current)]))
+  const glyphs = new Map(s.agents.map((a) => [a, glyphOf(a, live, current, input.foreign)]))
   const isTeam = s.runId !== null
 
   const rowOf = (a: AgentSummary): Row => {
@@ -153,7 +160,7 @@ export function buildView(input: ViewInput): View {
     const label = a.kind === 'lead' ? (s.generations.length > 1 ? `Gen ${gen}` : 'Lead') : isTeam ? a.task : a.name
     const ended = endOf(a, glyph, input.now)
     const isCurrentLead = a.kind === 'lead' && a.sessionId === current
-    const reported = isCurrentLead && input.reportedCostUsd !== null ? `gemeldet ${fmtCost(input.reportedCostUsd)}` : ''
+    const reported = isCurrentLead && reportedCostUsd !== null ? `gemeldet ${fmtCost(reportedCostUsd)}` : ''
     const time = fmtTime(a.firstAt === null ? 0 : (ended as number) - a.firstAt)
     return {
       key: a.id,
@@ -216,7 +223,7 @@ export function buildView(input: ViewInput): View {
   const wall = wallClock(s.agents, glyphs, s.generations, input.now)
   const tokens = s.agents.reduce((n, a) => n + tokenSum(a.tokens), 0)
 
-  const reported = input.reportedCostUsd
+  const reported = reportedCostUsd
   if (reported !== null && reported > 0) {
     const scope = s.agents.filter((a) => a.sessionId === current && (input.costIncludesAgents || a.kind === 'lead'))
     const base = scope.reduce((n, a) => n + a.costUsd, 0)
@@ -244,7 +251,8 @@ export function buildView(input: ViewInput): View {
 
   const gens = s.generations.length
   return {
-    title: isTeam ? `Lauf ${s.runId}${gens > 1 ? ` (Gen 1–${gens})` : ''}` : 'Diese Sitzung',
+    title: input.foreign ? `Sitzung: ${tidy(input.foreign.title)}` : isTeam ? `Lauf ${s.runId}${gens > 1 ? ` (Gen 1–${gens})` : ''}` : 'Diese Sitzung',
+    subtitle,
     totals: `≈ ${fmtCost(total)}   ${fmtTokens(tokens)} Tok   ${fmtTime(wall)}${unpriced ? `   ohne ${unpriced} Agents` : ''}`,
     counts,
     notices,
@@ -369,10 +377,53 @@ export type DirEnv = {
 }
 
 // Claude Code keeps its transcripts under CLAUDE_CONFIG_DIR when set, as a second account does.
-export const dirsOf = (env: DirEnv): { config: string; tmp: string } => ({
-  config: env.CLAUDE_CONFIG_DIR || `${env.USERPROFILE ?? env.HOME ?? ''}/.claude`,
-  tmp: env.TEMP ?? env.TMPDIR ?? '/tmp',
-})
+export const dirsOf = (env: DirEnv): { home: string; config: string; tmp: string } => {
+  const home = env.USERPROFILE ?? env.HOME ?? ''
+  return { home, config: env.CLAUDE_CONFIG_DIR || `${home}/.claude`, tmp: env.TEMP ?? env.TMPDIR ?? '/tmp' }
+}
+
+export const OWN = ''
+
+const ageOf = (ms: number): string => {
+  const min = Math.floor(Math.max(0, ms) / 60_000)
+  if (min < 1) return 'gerade eben'
+  if (min < 60) return `vor ${min} min`
+  if (min < 48 * 60) return `vor ${Math.floor(min / 60)} h`
+  return `vor ${Math.floor(min / 1440)} d`
+}
+
+// The second account's folder is `.claude-b`: its sessions carry the `b`.
+const accountOf = (config: string): string => /[\\/]\.claude-([^\\/]+)[\\/]?$/.exec(config)?.[1] ?? ''
+
+const PICK_TEXT = 60
+
+export function sessionLabel(s: SessionInfo, now: number): string {
+  const account = accountOf(s.config)
+  const cut = (text: string) => tidy(text).slice(0, PICK_TEXT)
+  return `${s.isLive ? '●' : '○'} ${cut(s.title)} · ${cut(s.project)} · ${ageOf(now - s.lastAt)}${account ? ` · ${cut(account)}` : ''}`
+}
+
+const sessionOf = (v: unknown): SessionInfo | null =>
+  isRecord(v) && ['id', 'config', 'project', 'title', 'cwd'].every((k) => typeof v[k] === 'string') &&
+  typeof v.lastAt === 'number' && typeof v.isLive === 'boolean'
+    ? (v as SessionInfo)
+    : null
+
+export function sessionsOf(r: { exitCode: number; stdout: string }): SessionInfo[] | null {
+  if (r.exitCode !== 0) return null
+  try {
+    const data: unknown = JSON.parse(r.stdout)
+    if (!Array.isArray(data)) return null
+    const list = data.map(sessionOf)
+    return list.every((s) => s !== null) ? (list as SessionInfo[]) : null
+  } catch {
+    return null
+  }
+}
+
+export function listArgs(script: string, home: string, config: string): string[] {
+  return ['node', script, '--list', '--home', home, '--config', config]
+}
 
 export function toggle(set: Set<string>, key: string): void {
   if (set.has(key)) set.delete(key)
