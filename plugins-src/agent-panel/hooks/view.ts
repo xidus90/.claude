@@ -17,7 +17,8 @@ export type Overview = {
 }
 export type Row = { key: string; glyph: Glyph; status: Status; label: string; model: string; effort: string; cost: string; tokens: string; time: string; note: string; detail: string; shares: Shares; meta: string }
 export type Group = { key: string; role: string; title: string; cost: string; tokens: string; time: string; costUsd: number; costShare: number; isRunning: boolean; counts: StatusCounts; rows: Row[] }
-export type View = { title: string; subtitle: string; totals: string; counts: string; notices: string[]; groups: Group[]; status: StatusCounts; overview: Overview }
+// gens is the generation range drawn dimmed after the title; subtitle is a line of its own below it.
+export type View = { title: string; gens: string; subtitle: string; totals: string; counts: string; notices: string[]; groups: Group[]; status: StatusCounts; overview: Overview }
 export type ViewInput = {
   summary: Summary | null
   live: LiveAgent[]
@@ -145,7 +146,7 @@ export function buildView(input: ViewInput): View {
   const subtitle = input.foreign ? 'nur aus dem Transkript' : ''
   // What Claude Code reports is this session's cost, never another's.
   const reportedCostUsd = input.foreign ? null : input.reportedCostUsd
-  if (!s) return { title: 'Agents', subtitle, totals: error ? '' : 'lade …', counts: '', notices, groups: [], status: noCounts(), overview: emptyOverview() }
+  if (!s) return { title: 'Agents', gens: '', subtitle, totals: error ? '' : 'lade …', counts: '', notices, groups: [], status: noCounts(), overview: emptyOverview() }
   if (s.unreadableLines > 0) notices.push(`⚠ ${s.unreadableLines} Zeilen unlesbar`)
   for (const p of s.problems) notices.push(`⚠ ${p}`)
 
@@ -251,7 +252,8 @@ export function buildView(input: ViewInput): View {
 
   const gens = s.generations.length
   return {
-    title: input.foreign ? `Sitzung: ${tidy(input.foreign.title)}` : isTeam ? `Lauf ${s.runId}${gens > 1 ? ` (Gen 1–${gens})` : ''}` : 'Diese Sitzung',
+    title: input.foreign ? `Sitzung: ${tidy(input.foreign.title)}` : isTeam ? `Lauf ${s.runId}` : 'Diese Sitzung',
+    gens: !input.foreign && isTeam && gens > 1 ? `Gen 1–${gens}` : '',
     subtitle,
     totals: `≈ ${fmtCost(total)}   ${fmtTokens(tokens)} Tok   ${fmtTime(wall)}${unpriced ? `   ohne ${unpriced} Agents` : ''}`,
     counts,
@@ -262,11 +264,18 @@ export function buildView(input: ViewInput): View {
   }
 }
 
-export const statusLine = (c: StatusCounts): string =>
-  `● läuft ${c.running}   ✓ fertig ${c.done}   ✗ gescheitert ${c.failed}   ⊘ abgebrochen ${c.aborted}`
+export type StatusItem = { status: Status; text: string }
 
-export const countsLine = (c: StatusCounts): string =>
-  [`● ${c.running}`, `✓ ${c.done}`, ...(c.failed ? [`✗ ${c.failed}`] : []), ...(c.aborted ? [`⊘ ${c.aborted}`] : [])].join('  ')
+export const statusItems = (c: StatusCounts): StatusItem[] => [
+  { status: 'running', text: `● läuft ${c.running}` }, { status: 'done', text: `✓ fertig ${c.done}` },
+  { status: 'failed', text: `✗ gescheitert ${c.failed}` }, { status: 'aborted', text: `⊘ abgebrochen ${c.aborted}` },
+]
+
+export const countItems = (c: StatusCounts): StatusItem[] => [
+  { status: 'running', text: `● ${c.running}` }, { status: 'done', text: `✓ ${c.done}` },
+  ...(c.failed ? [{ status: 'failed' as const, text: `✗ ${c.failed}` }] : []),
+  ...(c.aborted ? [{ status: 'aborted' as const, text: `⊘ ${c.aborted}` }] : []),
+]
 
 // The host draws a terminal pane only up to 100 000 characters of text; this many rows of a card stay
 // below that at every width, so the card names the rest instead of losing them silently.

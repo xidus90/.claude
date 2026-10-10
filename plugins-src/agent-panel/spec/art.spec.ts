@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { CARD_GAP, DARK, LIGHT, STATUS_COLOR, SVG_LIMIT, blockBar, costBarSvg, costParts, crabRaster, crabSvg, layoutOf, paletteOf, statusParts, statusSvg, stripeSvg, tilesSvg, tokenColors, tokenParts } from '../hooks/art.ts'
+import { CARD_GAP, DARK, LIGHT, STATUS_COLOR, SVG_LIMIT, SVG_W, blockBar, costBarSvg, costParts, crabRaster, crabSvg, layoutOf, legendColors, paletteOf, ruleSvg, statusParts, statusSvg, stripeSvg, tokenColors, tokenParts } from '../hooks/art.ts'
 
 const shares = { input: 0.1, output: 0.2, cacheRead: 0.6, cacheWrite: 0.1 }
 
@@ -12,11 +12,32 @@ test('picks the dark palette for a dark theme and light otherwise', () => {
   assert.equal(paletteOf(true), LIGHT)
 })
 
-test('draws the tiles with their labels and values in the palette', () => {
-  const svg = tilesSvg(DARK, [{ label: 'Kosten', value: '≈ $4.12' }, { label: 'Tokens', value: '1.8M' }, { label: 'Zeit', value: '38:12' }])
-  assert.match(svg, /^<svg /)
-  assert.ok(svg.includes(DARK.tile) && svg.includes('Kosten') && svg.includes('38:12'))
-  assert.ok(tilesSvg(LIGHT, [{ label: 'a', value: '<&>' }]).includes('&lt;&amp;&gt;'))
+test('draws every bar wider than a pane and free to stretch, so the host fits it to the slot', () => {
+  const pieces = [stripeSvg(LIGHT, shares, 6), statusSvg(LIGHT, { running: 1, done: 0, failed: 0, aborted: 0 }), costBarSvg(LIGHT, 0.5), ruleSvg(LIGHT)]
+  for (const p of pieces) {
+    assert.match(p, new RegExp(`^<svg [^>]*width="${SVG_W}"[^>]*preserveAspectRatio="none"`))
+    assert.doesNotMatch(p, /<text/)
+  }
+})
+
+test('widens the round ends by what the stretch takes away, so they stay round in a pane of the usual width', () => {
+  assert.match(stripeSvg(LIGHT, shares, 6), /<rect x="0" y="0" width="100%" height="6" rx="8.57" ry="3" fill="#efece6"\/>/)
+})
+
+test('draws the separator line in the border colour of the palette', () => {
+  assert.ok(ruleSvg(DARK).includes(DARK.border))
+  assert.ok(ruleSvg(LIGHT).includes(LIGHT.border))
+})
+
+test('gives the cards a background and border of their own in each palette', () => {
+  assert.deepEqual([LIGHT.card, LIGHT.border], ['#ffffff', '#e9e7e2'])
+  assert.deepEqual([DARK.card, DARK.border], ['#262523', '#3a3936'])
+})
+
+test('marks cache read in the legend darker than its light bar, so the square shows on white', () => {
+  assert.equal(legendColors(LIGHT).cacheRead, '#b9b5ac')
+  assert.equal(legendColors(DARK).cacheRead, DARK.cacheRead)
+  assert.equal(legendColors(LIGHT).input, tokenColors(LIGHT).input)
 })
 
 test('draws a token stripe with one rect per non-empty share, and only the track for no tokens', () => {
@@ -35,11 +56,11 @@ test('draws the status bar in the status colours, skipping empty statuses', () =
 })
 
 // Width of the cost bar's fill rect, or null when only the track is drawn.
-const costFill = (svg: string): string | null => /<rect x="0" y="0" width="([^"]+)" height="5" fill="#8f8cf4"\/>/.exec(svg)?.[1] ?? null
+const costFill = (svg: string): string | null => /<rect x="0%" y="0" width="([^"]+)" height="5" fill="#8f8cf4"\/>/.exec(svg)?.[1] ?? null
 
 test('draws the cost bar as a share of the track, clamped to 0..1', () => {
-  assert.equal(costFill(costBarSvg(LIGHT, 0.25)), '80')
-  assert.equal(costFill(costBarSvg(LIGHT, 2)), '320')
+  assert.equal(costFill(costBarSvg(LIGHT, 0.25)), '25%')
+  assert.equal(costFill(costBarSvg(LIGHT, 2)), '100%')
   assert.equal(costFill(costBarSvg(LIGHT, 0)), null)
   assert.equal(costFill(costBarSvg(LIGHT, -1)), null)
   assert.equal((costBarSvg(LIGHT, 0).match(/<rect/g) ?? []).length, 2)
@@ -76,13 +97,22 @@ test('makes one cost bar part, clamped to 0..1 and empty for a share that is not
 })
 
 test('sizes the bars to the terminal cells the pane and its crab card leave', () => {
-  assert.deepEqual(layoutOf(80), { isWide: true, barCells: 76, cardBarCells: 60 })
+  assert.deepEqual(layoutOf(80, true), { isWide: true, barCells: 76, cardBarCells: 60 })
   // The 80 columns hold the card's border and padding (4), the crab raster, the gap and the bar.
-  assert.equal(layoutOf(80).cardBarCells + 4 + crabRaster('plain').columns + CARD_GAP, 80)
-  assert.deepEqual(layoutOf(70), { isWide: true, barCells: 66, cardBarCells: 50 })
-  assert.deepEqual(layoutOf(69), { isWide: false, barCells: 65, cardBarCells: 65 })
-  assert.deepEqual(layoutOf(undefined), { isWide: false, barCells: 36, cardBarCells: 36 })
-  assert.equal(layoutOf(8).barCells, 10)
+  assert.equal(layoutOf(80, true).cardBarCells + 4 + crabRaster('plain').columns + CARD_GAP, 80)
+  assert.deepEqual(layoutOf(70, true), { isWide: true, barCells: 66, cardBarCells: 50 })
+  assert.deepEqual(layoutOf(69, true), { isWide: false, barCells: 65, cardBarCells: 65 })
+  assert.deepEqual(layoutOf(undefined, true), { isWide: false, barCells: 36, cardBarCells: 36 })
+  assert.equal(layoutOf(8, true).barCells, 10)
+})
+
+test('counts a desktop pane as wide at any column count, since it lays out in pixels', () => {
+  assert.equal(layoutOf(40, false).isWide, true)
+  assert.equal(layoutOf(undefined, false).isWide, true)
+})
+
+test('draws the crab at the size of the draft', () => {
+  assert.match(crabSvg('plain', false), /^<svg [^>]*width="36" height="34"/)
 })
 
 test('animates a running crab only, and honours reduced motion', () => {
@@ -119,7 +149,7 @@ test('gives every block bar part above zero a cell, taken from the widest, withi
 
 test('draws every SVG bar part above zero at least a terminal cell wide', () => {
   const svg = stripeSvg(LIGHT, { input: 0.0001, output: 0, cacheRead: 0.9, cacheWrite: 0.0999 }, 6)
-  assert.match(svg, new RegExp(`<rect x="0" y="0" width="4" height="6" fill="#8f8cf4"/>`))
+  assert.match(svg, new RegExp(`<rect x="0%" y="0" width="1.25%" height="6" fill="#8f8cf4"/>`))
   assert.doesNotMatch(svg, /fill="#5fbf8f"/)
 })
 

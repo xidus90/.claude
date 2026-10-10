@@ -1,9 +1,9 @@
 import type { ElementTable, EngineInterface, Register } from 'claude-code'
 import type { SessionInfo, Summary } from '../shared/summary.ts'
-import { blockBar, CARD_GAP, costBarSvg, costParts, crabRaster, crabSvg, layoutOf, paletteOf, STATUS_COLOR, statusParts, statusSvg, stripeSvg, tilesSvg, tokenParts, type BarPart, type Palette } from './art.ts'
+import { blockBar, CARD_GAP, COST_H, costBarSvg, costParts, crabRaster, crabSvg, layoutOf, legendColors, paletteOf, RULE_H, ruleSvg, STATUS_COLOR, STATUS_H, statusParts, statusSvg, stripeSvg, tokenParts, type BarPart, type Palette } from './art.ts'
 import { EMPTY_LOG, onSpawn, type SpawnLog } from './open.ts'
 import { costumeOf } from './sprites.ts'
-import { buildView, countsLine, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, isGone, listArgs, moreLine, OWN, parseResult, pickerOptions, reportedCost, rowLine, scriptArgs, sessionsOf, startError, statusLine, visibleRows, type Group, type LiveAgent, type Row, type View } from './view.ts'
+import { buildView, countItems, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, isGone, listArgs, moreLine, OWN, parseResult, pickerOptions, reportedCost, rowLine, scriptArgs, sessionsOf, startError, statusItems, visibleRows, type Group, type LiveAgent, type Row, type StatusItem, type View } from './view.ts'
 
 const PANE = 'agent-panel'
 // Measured in docs/.superpowers/smoke/2026-10-09-agent-panel-probe.md.
@@ -116,7 +116,7 @@ function textTree({ Box, Text, Button }: TextUi, v: View, redraw: () => void) {
   return Box({
     flexDirection: 'column',
     children: [
-      Text({ bold: true, wrap: 'truncate-end', children: [v.title] }),
+      Text({ bold: true, wrap: 'truncate-end', children: [v.gens ? `${v.title} · ${v.gens}` : v.title] }),
       ...(v.subtitle ? [Text({ dimColor: true, children: [v.subtitle] })] : []),
       Text({ wrap: 'truncate-end', children: [v.totals] }),
       Text({ dimColor: true, children: [v.counts] }),
@@ -212,39 +212,59 @@ export const register: Register = (on) => {
     }
     try {
       // The terminal draws cells and rasters; every other surface draws SVG, which has no key of its own.
-      const { isWide, barCells, cardBarCells } = layoutOf(e.props.bodyColumns)
+      const isTerminal = e.surface === 'terminal'
+      const { isWide, barCells, cardBarCells } = layoutOf(e.props.bodyColumns, isTerminal)
+      // The SVG is wider than any pane and stretches to the slot, so it needs its height given.
+      const svg = (key: string, source: string, alt: string, height: number) => Box({ key, children: e.surface === 'terminal' ? [] : [$.ui.resolve(e).Svg({ source, alt, height })] })
       // The alt is words of its own: a key can hold an agent id, and the host refuses a control character in an alt.
-      const bar = (key: string, alt: string, parts: BarPart[], svg: string, cells: number) => e.surface === 'terminal'
+      const bar = (key: string, alt: string, parts: BarPart[], source: string, height: number, cells: number) => isTerminal
         ? Box({ key, flexDirection: 'row', children: blockBar(parts, cells, palette.track).map((s) => Text({ color: s.color, children: [s.text] })) })
-        : Box({ key, children: [$.ui.resolve(e).Svg({ source: svg, alt })] })
-      const crab = (g: Group) => e.surface === 'terminal'
+        : svg(key, source, alt, height)
+      const crab = (g: Group) => isTerminal
         ? $.ui.resolve(e).Raster({ key: `crab-${g.role}`, ...crabRaster(costumeOf(g.role)) })
         : Box({ key: `crab-${g.role}`, children: [$.ui.resolve(e).Svg({ source: crabSvg(costumeOf(g.role), g.isRunning), alt: `Krabbe ${g.title}` })] })
+      const colored = (items: StatusItem[]) => items.flatMap((item, i) => [...(i ? [Text({ children: [' '] })] : []), Text({ color: STATUS_COLOR[item.status], children: [item.text] })])
+      // A section head reads in grey capitals; folded, it carries its summary after the name.
+      const heading = (key: string, isOpen: boolean, name: string, folded: ReturnType<typeof Text>[], onPress: () => void) => Button({ key, plain: true, onPress, children: [
+        Text({ bold: true, color: 'inactive', children: [`${isOpen ? '▾' : '▸'} ${name.toUpperCase()}`] }),
+        ...(isOpen ? [] : [Text({ children: ['   '] }), ...folded]),
+      ] })
       // A blank line above each agent sets it apart from the cost bar and from the agent before.
       const row = (r: Row) => [Box({ key: `row-${r.key}`, flexDirection: 'column', marginTop: 1, children: [
-        Box({ flexDirection: 'row', children: [
-          Text({ color: STATUS_COLOR[r.status], children: [`${r.glyph} `] }),
-          Button({ key: `r-${r.key}`, plain: true, label: r.label, onPress: () => { toggle(expanded, r.key); redraw() } }),
-          Text({ dimColor: true, wrap: 'truncate-end', children: [`  ${r.meta}`] }),
+        Box({ key: `line-${r.key}`, flexDirection: 'row', justifyContent: 'space-between', columnGap: 2, children: [
+          Box({ flexDirection: 'row', children: [
+            Text({ color: STATUS_COLOR[r.status], children: [`${r.glyph} `] }),
+            Button({ key: `r-${r.key}`, plain: true, label: r.label, onPress: () => { toggle(expanded, r.key); redraw() } }),
+          ] }),
+          Text({ dimColor: true, wrap: 'truncate-end', children: [r.meta] }),
         ] }),
-        bar(`stripe-${r.key}`, 'Tokenverteilung', tokenParts(palette, r.shares), stripeSvg(palette, r.shares, 6), cardBarCells),
+        bar(`stripe-${r.key}`, 'Tokenverteilung', tokenParts(palette, r.shares), stripeSvg(palette, r.shares, 6), 6, cardBarCells),
         ...(expanded.has(r.key) ? [Text({ dimColor: true, children: [detailLine(r)] })] : []),
       ] })]
       const group = (g: Group) => {
         const isGroupOpen = !collapsed.has(g.key)
         const body = [
           Box({ flexDirection: 'row', justifyContent: 'space-between', children: [
-            Button({ key: `g-${g.key}`, plain: true, label: `${isGroupOpen ? '▾' : '▸'} ${g.title}  ${countsLine(g.counts)}`, onPress: () => { toggle(collapsed, g.key); redraw() } }),
+            Button({ key: `g-${g.key}`, plain: true, onPress: () => { toggle(collapsed, g.key); redraw() }, children: [
+              Text({ bold: true, children: [`${isGroupOpen ? '▾' : '▸'} ${g.title}  `] }),
+              ...colored(countItems(g.counts)),
+            ] }),
             Text({ bold: true, children: [g.cost] }),
           ] }),
-          ...(isGroupOpen ? [bar(`cost-${g.key}`, 'Kostenanteil', costParts(g.costShare), costBarSvg(palette, g.costShare), cardBarCells), ...visibleRows(g, isHidingDone).flatMap(row)] : []),
+          ...(isGroupOpen ? [bar(`cost-${g.key}`, 'Kostenanteil', costParts(g.costShare), costBarSvg(palette, g.costShare), COST_H, cardBarCells), ...visibleRows(g, isHidingDone).flatMap(row)] : []),
           ...(isGroupOpen && moreLine(g, isHidingDone) ? [Text({ dimColor: true, children: [moreLine(g, isHidingDone)] })] : []),
         ]
-        return Box({ key: `card-${g.key}`, flexDirection: 'row', borderStyle: 'round', paddingX: 1, columnGap: CARD_GAP, children: [
+        // A terminal keeps its own background; a desktop card stands off the pane as in the draft.
+        return Box({ key: `card-${g.key}`, flexDirection: 'row', borderStyle: 'round', paddingX: 1, columnGap: CARD_GAP,
+          ...(isTerminal ? {} : { backgroundColor: palette.card, borderColor: palette.border }), children: [
           ...(isWide ? [crab(g)] : []),
           Box({ flexDirection: 'column', flexGrow: 1, children: body }),
         ] })
       }
+      const keys = legendColors(palette)
+      const amount = (color: string, name: string, value: string) => Box({ flexDirection: 'row', children: [
+        Text({ color, children: ['■ '] }), Text({ dimColor: true, children: [`${name} `] }), Text({ bold: true, children: [value] }),
+      ] })
       // The picker sits beside the title in a wide pane, on a row of its own in a narrow one.
       // A surface without a Select (mobile) shows the title alone.
       const table = $.ui.resolve(e)
@@ -258,37 +278,50 @@ export const register: Register = (on) => {
         : []
       return Box({ flexDirection: 'column', children: [
         Box({ key: 'title-row', flexDirection: 'row', justifyContent: 'space-between', columnGap: 2, children: [
-          Text({ bold: true, wrap: 'truncate-end', children: [v.title] }),
+          Box({ flexDirection: 'row', children: [
+            Text({ bold: true, wrap: 'truncate-end', children: [v.title] }),
+            ...(v.gens ? [Text({ dimColor: true, wrap: 'truncate-end', children: [` · ${v.gens}`] })] : []),
+          ] }),
           ...(isWide ? picker : []),
         ] }),
         ...(isWide ? [] : picker),
         ...(v.subtitle ? [Text({ dimColor: true, children: [v.subtitle] })] : []),
         ...v.notices.map((n) => Text({ color: 'warning', wrap: 'truncate-end', children: [n] })),
-        Button({ key: 'sec-overview', plain: true, label: `${isOverviewOpen ? '▾' : '▸'} Übersicht${isOverviewOpen ? '' : `   ${v.overview.line}`}`, onPress: () => { isOverviewOpen = !isOverviewOpen; redraw() } }),
+        heading('sec-overview', isOverviewOpen, 'Übersicht', [Text({ dimColor: true, children: [v.overview.line] })], () => { isOverviewOpen = !isOverviewOpen; redraw() }),
         ...(isOverviewOpen ? [
-          e.surface === 'terminal'
+          isTerminal
             ? Text({ bold: true, children: [`Kosten ${v.overview.cost} · Tokens ${v.overview.tokens} · Zeit ${v.overview.time}`] })
-            : Box({ key: 'svg-tiles', children: [$.ui.resolve(e).Svg({ source: tilesSvg(palette, [{ label: 'Kosten', value: v.overview.cost }, { label: 'Tokens', value: v.overview.tokens }, { label: 'Zeit', value: v.overview.time }]), alt: v.overview.line })] }),
+            // Boxes, not SVG: an SVG stretched to the slot would stretch its text with it.
+            : Box({ key: 'tiles', flexDirection: 'row', columnGap: 1, children: [{ label: 'Kosten', value: v.overview.cost }, { label: 'Tokens', value: v.overview.tokens }, { label: 'Zeit', value: v.overview.time }].map(({ label, value }) =>
+                Box({ flexDirection: 'column', width: '33%', flexGrow: 1, flexShrink: 1, paddingX: 1, borderStyle: 'round', borderColor: palette.tile, backgroundColor: palette.tile, children: [
+                  Text({ dimColor: true, children: [label] }), Text({ bold: true, children: [value] }),
+                ] })) }),
           ...(v.overview.unpriced ? [Text({ color: 'warning', children: [v.overview.unpriced] })] : []),
-          bar('stripe-total', 'Tokenverteilung', tokenParts(palette, v.overview.shares), stripeSvg(palette, v.overview.shares, 10), barCells),
-          Text({ dimColor: true, children: [`in ${v.overview.amounts.input} · out ${v.overview.amounts.output} · cache read ${v.overview.amounts.cacheRead} · cache write ${v.overview.amounts.cacheWrite}`] }),
+          bar('stripe-total', 'Tokenverteilung', tokenParts(palette, v.overview.shares), stripeSvg(palette, v.overview.shares, 10), 10, barCells),
+          Box({ key: 'legend', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: 2, children: [
+            amount(keys.input, 'in', v.overview.amounts.input), amount(keys.output, 'out', v.overview.amounts.output),
+            amount(keys.cacheRead, 'cache read', v.overview.amounts.cacheRead), amount(keys.cacheWrite, 'cache write', v.overview.amounts.cacheWrite),
+          ] }),
         ] : []),
-        // A narrow pane has no room beside the heading, so the buttons get a row of their own that wraps.
+        isTerminal
+          ? Box({ key: 'rule-agents', marginTop: 1, children: [Text({ dimColor: true, children: ['─'.repeat(barCells)] })] })
+          : Box({ key: 'rule-agents', marginTop: 1, children: [$.ui.resolve(e).Svg({ source: ruleSvg(palette), alt: 'Trennlinie', height: RULE_H })] }),
+        // A narrow terminal has no room beside the heading, so the buttons get a row of their own that wraps.
         ...((() => {
-          const tools = isAgentsOpen ? [Box({ key: 'agents-tools', flexDirection: 'row', flexWrap: 'wrap', columnGap: 2, children: [
-            Button({ key: 'hide-done', plain: true, label: isHidingDone ? '[x] Fertige ausblenden' : '[ ] Fertige ausblenden', onPress: () => { isHidingDone = !isHidingDone; redraw() } }),
-            Button({ key: 'fold-all', plain: true, label: 'Alle einklappen', onPress: () => { for (const g of v.groups) collapsed.add(g.key); redraw() } }),
-            Button({ key: 'open-all', plain: true, label: 'Alle ausklappen', onPress: () => { collapsed.clear(); redraw() } }),
+          const tools = isAgentsOpen ? [Box({ key: 'agents-tools', flexDirection: 'row', flexWrap: 'wrap', columnGap: 1, children: [
+            Button({ key: 'hide-done', variant: isHidingDone ? 'primary' : 'secondary', label: 'Fertige ausblenden', onPress: () => { isHidingDone = !isHidingDone; redraw() } }),
+            Button({ key: 'fold-all', variant: 'secondary', label: 'Alle einklappen', onPress: () => { for (const g of v.groups) collapsed.add(g.key); redraw() } }),
+            Button({ key: 'open-all', variant: 'secondary', label: 'Alle ausklappen', onPress: () => { collapsed.clear(); redraw() } }),
           ] })] : []
-          const head = Box({ key: 'agents-head', flexDirection: 'row', justifyContent: 'space-between', columnGap: 2, marginTop: 1, children: [
-            Button({ key: 'sec-agents', plain: true, label: `${isAgentsOpen ? '▾' : '▸'} Agents${isAgentsOpen ? '' : `   ${countsLine(v.status)}`}`, onPress: () => { isAgentsOpen = !isAgentsOpen; redraw() } }),
+          const head = Box({ key: 'agents-head', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: 2, children: [
+            heading('sec-agents', isAgentsOpen, 'Agents', colored(countItems(v.status)), () => { isAgentsOpen = !isAgentsOpen; redraw() }),
             ...(isWide ? tools : []),
           ] })
           return isWide ? [head] : [head, ...tools]
         })()),
         ...(isAgentsOpen ? [
-          bar('status', 'Statusverteilung', statusParts(v.status), statusSvg(palette, v.status), barCells),
-          Text({ dimColor: true, children: [statusLine(v.status)] }),
+          bar('status', 'Statusverteilung', statusParts(v.status), statusSvg(palette, v.status), STATUS_H, barCells),
+          Box({ key: 'status-line', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: 2, children: statusItems(v.status).map((item) => Text({ color: STATUS_COLOR[item.status], children: [item.text] })) }),
           // A line of space between the role cards.
           Box({ key: 'cards', flexDirection: 'column', rowGap: 1, children: v.groups.map(group) }),
         ] : []),
