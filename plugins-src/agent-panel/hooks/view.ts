@@ -34,8 +34,10 @@ const COLORS: Record<Glyph, string> = { '●': 'cyan', '✓': 'green', '✗': 'r
 
 export const fmtCost = (usd: number): string => `$${usd < 10 ? usd.toFixed(2) : usd.toFixed(1)}`
 
-export const fmtTokens = (n: number): string =>
-  n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : `${n}`
+export const fmtTokens = (n: number): string => {
+  const k = Math.round(n / 1e3)
+  return k >= 1e3 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${k}k` : `${n}`
+}
 
 export function fmtTime(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000))

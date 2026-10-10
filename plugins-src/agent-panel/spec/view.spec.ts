@@ -33,6 +33,12 @@ test('formats cost, tokens and time', () => {
   assert.equal(fmtTime(-5), '0:00')
 })
 
+test('just under a million tokens rounds up to 1.0M, not to 1000k', () => {
+  assert.equal(fmtTokens(999_499), '999k')
+  assert.equal(fmtTokens(999_500), '1.0M')
+  assert.equal(fmtTokens(999_999), '1.0M')
+})
+
 test('groups a team run by role, running groups first, then by cost', () => {
   const v = buildView(input(team([
     lead({ firstAt: 0, lastAt: MIN, costUsd: 0.9 }),
