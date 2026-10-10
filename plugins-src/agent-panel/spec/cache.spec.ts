@@ -31,6 +31,8 @@ test('saves into a new folder and loads back what it saved, leaving no temp file
 })
 
 const POSIX = process.platform === 'win32' ? { skip: 'needs POSIX owners and modes' } : {}
+// Root passes every permission check, so a denied folder only denies anyone else.
+const UNPRIVILEGED = process.platform === 'win32' || process.getuid?.() === 0 ? { skip: 'needs a denied folder and a user it binds' } : {}
 
 function victimIn(dir: string): string {
   const victim = join(dir, 'victim.txt')
@@ -86,6 +88,22 @@ test('saves nothing and reads nothing where a link to nowhere sits at the folder
   saveCache(path, emptyCache())
   assert.deepEqual(loadCache(path), emptyCache())
   assert.deepEqual(readdirSync(root), ['agent-panel'])
+})
+
+test('reports a failure to create the folder other than a non-folder at its path', () => {
+  // A null byte makes mkdir fail with an error that says nothing about the path being taken.
+  assert.throws(() => saveCache(join(tempDir(), 'a\0b', 's1.json'), emptyCache()), { code: 'ERR_INVALID_ARG_VALUE' })
+  assert.deepEqual(loadCache(join(tempDir(), 'a\0b', 's1.json')), emptyCache())
+})
+
+test('reports a folder it is not allowed to create', UNPRIVILEGED, () => {
+  const parent = tempDir()
+  chmodSync(parent, 0o500)
+  try {
+    assert.throws(() => saveCache(join(parent, 'agent-panel', 's1.json'), emptyCache()), { code: 'EACCES' })
+  } finally {
+    chmodSync(parent, 0o700)
+  }
 })
 
 test('neither saves into nor loads from a folder that is a link', () => {

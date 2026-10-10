@@ -40,12 +40,16 @@ export function loadCache(path: string): Cache {
   }
 }
 
+const NOT_A_FOLDER: readonly (string | undefined)[] = ['EEXIST', 'ENOENT', 'ENOTDIR']
+
 export function saveCache(path: string, cache: Cache, suffix: () => string = randomUUID): void {
   const dir = dirname(path)
   try {
     mkdirSync(dir, { recursive: true, mode: 0o700 })
-  } catch {
-    // Something that is not a folder sits at the path; like any untrusted folder, it gets no cache.
+  } catch (err) {
+    // Only a file or a dangling link at the path (EEXIST, ENOENT, ENOTDIR) means no cache; like any
+    // untrusted folder it is skipped. Any other failure, say a denied or full disk, is reported.
+    if (!NOT_A_FOLDER.includes((err as NodeJS.ErrnoException).code)) throw err
     return
   }
   if (!ownsDir(dir)) return

@@ -257,6 +257,16 @@ test('keeps the summary and adds a problem line when the cache cannot be written
   assert.match(s.problems[0] ?? '', /^Cache nicht gespeichert: /)
 })
 
+test('keeps the summary and adds a problem line when the cache folder cannot be created', () => {
+  const w = world()
+  lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
+  // A null byte makes mkdir fail with an error that says nothing about the path being taken.
+  const s = summarize({ ...opts(w, 's1'), cache: join(tempDir(), 'a\0b', 's.json') })
+  assert.deepEqual(s.agents.map((a) => a.id), ['lead:s1'])
+  assert.equal(s.problems.length, 1)
+  assert.match(s.problems[0] ?? '', /^Cache nicht gespeichert: /)
+})
+
 test('main reports a failure inside the summary and still returns 0', () => {
   const w = world()
   lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))

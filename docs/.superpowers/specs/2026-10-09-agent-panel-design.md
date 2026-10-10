@@ -131,8 +131,9 @@ schreiben dürfen. Sonst — auch wenn an der Stelle eine Datei oder ein ins Lee
 zeigender Link liegt — liest und schreibt es keinen Cache und fasst trotzdem
 zusammen. Geschrieben wird über eine Temp-Datei mit zufälligem Namen, die
 exklusiv (`wx`, Modus 0600) angelegt und dann umbenannt wird. Scheitert das
-Schreiben, bleibt die Zusammenfassung und erhält eine Problemzeile „Cache nicht
-gespeichert“.
+Anlegen des Ordners aus einem anderen Grund als dem Hindernis an der Stelle
+(etwa Zugriff verweigert) oder das Schreiben, bleibt die Zusammenfassung und
+erhält eine Problemzeile „Cache nicht gespeichert“.
 
 **Voraussetzung:** `node` ≥ 22.18 (führt TypeScript ohne Flag aus) im PATH des
 Claude-Code-Prozesses. Scheitert der Start, zeigt das Panel „node nicht
