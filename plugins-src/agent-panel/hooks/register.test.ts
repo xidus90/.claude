@@ -238,7 +238,7 @@ test('the terminal draws block bars and raster crabs when wide', async ($, on) =
   await clock.advance(2000)
   const ui = await $.ui.mount(WIDE('terminal'))
   expect(await ui.find({ key: 'crab-implementer-backend' })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /█/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /▄/ })).toBeDefined()
   expect(await ui.find({ type: 'Svg' })).toBeUndefined()
 })
 

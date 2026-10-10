@@ -100,14 +100,14 @@ test('keeps every piece under the SVG limit with 200 agents', () => {
 
 test('builds a block bar of the given width from shares', () => {
   const bar = blockBar([{ share: 0.5, color: '#111111' }, { share: 0.25, color: '#222222' }], 8, '#999999')
-  assert.deepEqual(bar, [{ text: '████', color: '#111111' }, { text: '██', color: '#222222' }, { text: '░░', color: '#999999' }])
-  assert.deepEqual(blockBar([], 3, '#999999'), [{ text: '░░░', color: '#999999' }])
-  assert.deepEqual(blockBar([{ share: 1, color: '#111111' }], 2, '#999999'), [{ text: '██', color: '#111111' }])
+  assert.deepEqual(bar, [{ text: '▄▄▄▄', color: '#111111' }, { text: '▄▄', color: '#222222' }, { text: '▄▄', color: '#999999' }])
+  assert.deepEqual(blockBar([], 3, '#999999'), [{ text: '▄▄▄', color: '#999999' }])
+  assert.deepEqual(blockBar([{ share: 1, color: '#111111' }], 2, '#999999'), [{ text: '▄▄', color: '#111111' }])
 })
 
 test('leaves out block bar parts that round to no cell and clips the rest to the width', () => {
   const bar = blockBar([{ share: 0, color: '#111111' }, { share: 0.01, color: '#222222' }, { share: 0.9, color: '#333333' }, { share: 0.5, color: '#444444' }], 4, '#999999')
-  assert.deepEqual(bar, [{ text: '████', color: '#333333' }])
+  assert.deepEqual(bar, [{ text: '▄▄▄▄', color: '#333333' }])
 })
 
 const cells = (bar: { text: string; color: string }[], color: string): number => bar.filter((s) => s.color === color).reduce((n, s) => n + s.text.length, 0)

@@ -112,16 +112,17 @@ export function blockBar(parts: BarPart[], width: number, track: string): Segmen
   const out: Segment[] = []
   let used = 0
   let sum = 0
+  // A lower half block draws the bar half a line high, the track in its own color.
   // Round the running total, not each part: shares summing to one fill the bar and a part worth a whole cell keeps one,
   // while a part below a cell may still get none. The nudge lifts sums a float short of an exact half (5.499…) over it.
   for (const part of parts) {
     sum += part.share
     const n = Math.min(width, Math.round(sum * width + 1e-9)) - used
     if (n <= 0) continue
-    out.push({ text: '█'.repeat(n), color: part.color })
+    out.push({ text: '▄'.repeat(n), color: part.color })
     used += n
   }
-  if (used < width) out.push({ text: '░'.repeat(width - used), color: track })
+  if (used < width) out.push({ text: '▄'.repeat(width - used), color: track })
   return out
 }
 
