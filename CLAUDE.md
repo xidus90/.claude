@@ -35,8 +35,9 @@
   Vor einer Antwort aus der Suche `brain_status` lesen: nicht jedes indexierte
   Dokument ist durchsuchbar.
 - Antworten mit Substanz werden ein Concept, statt im Chat zu verschwinden.
-- Code implementiert → die betroffenen `Architecture`- und
-  `Game System`-Seiten **im selben Task** nachziehen.
+- Code implementiert → die betroffenen Wikiseiten **im selben Task**
+  nachziehen; welche Seitentypen das sind, steht in der `AGENTS.md` des
+  Projekts.
 - Ablage unklar → Concept in `open-questions/` und nachfragen, nicht raten.
 - Widerspruch zu einer bestehenden Seite → beides festhalten, Konflikt
   markieren, vorlegen. Nie stillschweigend überschreiben.

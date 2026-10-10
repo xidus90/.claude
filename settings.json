@@ -180,7 +180,7 @@
       "**Routine under user/ prefix**: none identified",
       "**Primary use of Claude Code**: software development (loomux — a Go-based developer runtime: hooks, skills, code graph, second brain, LLM OS)",
       "**Trusted repo**: C:\\Users\\micro\\Documents\\#GIT\\loomux, its remote `origin` (github.com/xidus90/loomux) — PUBLIC repo: only loomux's own work is safe to commit/push here; secrets and sensitive/personal data are never cleared into it regardless of visibility; content ported from outside this repo (e.g. other checkouts under home) is not loomux's own work",
-      "**Org-specific CLis**: ultraloom/loomux project CLIs — the repo-built `loomux`/`loomux.exe` binary (via `go run ./cmd/loomux` or built binary), and prefer the Go `ulinit`/`ulguard` binaries over the legacy Python toolchain path within this repo where both exist, per project CLAUDE.md guidance (repo-authored, not independently verified)",
+      "**Org-specific CLis**: loomux project CLI — the single repo-built `loomux`/`loomux.exe` binary (via `go run ./cmd/loomux` or `bin/loomux.exe`); the installed copy at `%LOCALAPPDATA%\\loomux\\bin\\loomux.exe` serves the `loomux` MCP",
       "routine under this repo's working tree (C:\\Users\\micro\\Documents\\#GIT\\loomux) is the user's normal workspace"
     ]
   },
