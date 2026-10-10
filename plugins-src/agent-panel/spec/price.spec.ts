@@ -57,6 +57,15 @@ test('returns null for a model without a price', () => {
   assert.equal(costOf('<synthetic>', t({})), null)
 })
 
+test('reads a long model id of brackets in linear time', () => {
+  const started = performance.now()
+  assert.equal(modelKey('['.repeat(100_000)), '['.repeat(100_000))
+  assert.equal(modelKey(`claude-opus-5-5${'[x'.repeat(50_000)}`), `opus-5-5${'[x'.repeat(50_000)}`)
+  assert.equal(modelKey('claude-opus-5[a]b[1m]'), 'opus-5')
+  // The quadratic form took seconds here; linear work stays far below this.
+  assert.ok(performance.now() - started < 500, `${performance.now() - started} ms`)
+})
+
 test('returns null for a model named like an Object.prototype member', () => {
   for (const model of ['constructor', '__proto__', 'claude-constructor', '__proto__[1m]', 'toString', 'claude-hasOwnProperty']) {
     assert.equal(costOf(model, t({ output: M })), null, model)

@@ -37,7 +37,11 @@ const HAIKU_LONG_PROMPT = 100_000
 
 // 3.x ids put the version before the family (claude-3-5-haiku-20241022); the keys put it after.
 export function modelKey(model: string): string {
-  return model.toLowerCase().replace(/\[.*\]$/, '').replace(/^claude-/, '')
+  const lower = model.toLowerCase()
+  // A context suffix like [1m] runs from the first bracket to the end; a regex for it went quadratic on many brackets.
+  const open = lower.indexOf('[')
+  const bare = open >= 0 && lower.endsWith(']') ? lower.slice(0, open) : lower
+  return bare.replace(/^claude-/, '')
     .replace(/^(\d+(?:-\d+)?)-(haiku|sonnet|opus)/, '$2-$1').replace(/-(\d{8}|latest)$/, '')
 }
 
