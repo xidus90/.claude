@@ -20,6 +20,8 @@ const TEAM = JSON.stringify({ runId: 'r1', generations: ['s1'], agents: [LEAD, A
 // One escape sequence in a text makes the host refuse the whole tree.
 const DIRTY_AGENT = { ...AGENT, name: 'impl \u001b[31mT1\nnext', task: 'impl \u001b[31mT1\nnext', model: 'x\u001b]0;title\u0007', effort: '\u001b[31mhigh\r\nX', end: 'error', errorText: 'boom\u001b[2J\r\nY' }
 const DIRTY = JSON.stringify({ runId: 'r1', generations: ['s1'], agents: [LEAD, DIRTY_AGENT], unreadableLines: 0, problems: [] })
+// An id comes from a file name, so it can hold anything; it only ever serves as a key.
+const DIRTY_ID = JSON.stringify({ runId: 'r1', generations: ['s1'], agents: [LEAD, { ...AGENT, id: 'x\u001b[31m1' }], unreadableLines: 0, problems: [] })
 const UNPRICED = JSON.stringify({ runId: 'r1', generations: ['s1'], agents: [LEAD, { ...AGENT, model: 'x-unknown', costUsd: 0, unpriced: true }], unreadableLines: 0, problems: [] })
 // Terminal cells a keyed element draws: the glyphs of its text.
 const cellsOf = (el: { text: string } | undefined): number => [...(el?.text ?? '')].length
@@ -423,6 +425,23 @@ test('an escape sequence in an agent name does not make the host refuse the pane
     expect(await ui.find({ type: 'Text', text: /boom \[2J Y$/ })).toBeDefined()
     await ui.unmount()
   }
+})
+
+test('an escape sequence in an agent id does not make the host refuse the pane, and no Svg alt carries a key', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: DIRTY_ID, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount(NARROW(surface))
+    expect(await ui.find({ key: 'r-x\u001b[31m1' })).toBeDefined()
+    await ui.unmount()
+  }
+  const drawn = JSON.stringify(await (await $.ui.mount(NARROW('desktop'))).drawn())
+  expect(drawn.includes('"alt":"Tokenverteilung"')).toBe(true)
+  expect(drawn.includes('"alt":"stripe-')).toBe(false)
 })
 
 test('a failed theme read falls back to the light palette and still draws', async ($, on) => {

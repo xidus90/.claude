@@ -172,9 +172,10 @@ export const register: Register = (on) => {
     try {
       // The terminal draws cells and rasters; every other surface draws SVG, which has no key of its own.
       const { isWide, barCells, cardBarCells } = layoutOf(e.props.bodyColumns)
-      const bar = (key: string, parts: BarPart[], svg: string, cells: number) => e.surface === 'terminal'
+      // The alt is words of its own: a key can hold an agent id, and the host refuses a control character in an alt.
+      const bar = (key: string, alt: string, parts: BarPart[], svg: string, cells: number) => e.surface === 'terminal'
         ? Box({ key, flexDirection: 'row', children: blockBar(parts, cells, palette.track).map((s) => Text({ color: s.color, children: [s.text] })) })
-        : Box({ key, children: [$.ui.resolve(e).Svg({ source: svg, alt: key })] })
+        : Box({ key, children: [$.ui.resolve(e).Svg({ source: svg, alt })] })
       const crab = (g: Group) => e.surface === 'terminal'
         ? $.ui.resolve(e).Raster({ key: `crab-${g.role}`, ...crabRaster(costumeOf(g.role)) })
         : Box({ key: `crab-${g.role}`, children: [$.ui.resolve(e).Svg({ source: crabSvg(costumeOf(g.role), g.isRunning), alt: `Krabbe ${g.title}` })] })
@@ -184,7 +185,7 @@ export const register: Register = (on) => {
           Button({ key: `r-${r.key}`, plain: true, label: r.label, onPress: () => { toggle(expanded, r.key); redraw() } }),
           Text({ dimColor: true, wrap: 'truncate-end', children: [`  ${r.meta}`] }),
         ] }),
-        bar(`stripe-${r.key}`, tokenParts(palette, r.shares), stripeSvg(palette, r.shares, 6), cardBarCells),
+        bar(`stripe-${r.key}`, 'Tokenverteilung', tokenParts(palette, r.shares), stripeSvg(palette, r.shares, 6), cardBarCells),
         ...(expanded.has(r.key) ? [Text({ dimColor: true, children: [detailLine(r)] })] : []),
       ]
       const group = (g: Group) => {
@@ -194,7 +195,7 @@ export const register: Register = (on) => {
             Button({ key: `g-${g.key}`, plain: true, label: `${isGroupOpen ? '▾' : '▸'} ${g.title}  ${countsLine(g.counts)}`, onPress: () => { toggle(collapsed, g.key); redraw() } }),
             Text({ bold: true, children: [g.cost] }),
           ] }),
-          ...(isGroupOpen ? [bar(`cost-${g.key}`, costParts(g.costShare), costBarSvg(palette, g.costShare), cardBarCells), ...visibleRows(g, isHidingDone).flatMap(row)] : []),
+          ...(isGroupOpen ? [bar(`cost-${g.key}`, 'Kostenanteil', costParts(g.costShare), costBarSvg(palette, g.costShare), cardBarCells), ...visibleRows(g, isHidingDone).flatMap(row)] : []),
         ]
         return Box({ key: `card-${g.key}`, flexDirection: 'row', borderStyle: 'round', paddingX: 1, columnGap: CARD_GAP, children: [
           ...(isWide ? [crab(g)] : []),
@@ -210,7 +211,7 @@ export const register: Register = (on) => {
             ? Text({ bold: true, children: [`Kosten ${v.overview.cost} · Tokens ${v.overview.tokens} · Zeit ${v.overview.time}`] })
             : Box({ key: 'svg-tiles', children: [$.ui.resolve(e).Svg({ source: tilesSvg(palette, [{ label: 'Kosten', value: v.overview.cost }, { label: 'Tokens', value: v.overview.tokens }, { label: 'Zeit', value: v.overview.time }]), alt: v.overview.line })] }),
           ...(v.overview.unpriced ? [Text({ color: 'warning', children: [v.overview.unpriced] })] : []),
-          bar('stripe-total', tokenParts(palette, v.overview.shares), stripeSvg(palette, v.overview.shares, 10), barCells),
+          bar('stripe-total', 'Tokenverteilung', tokenParts(palette, v.overview.shares), stripeSvg(palette, v.overview.shares, 10), barCells),
           Text({ dimColor: true, children: [`in ${v.overview.amounts.input} · out ${v.overview.amounts.output} · cache read ${v.overview.amounts.cacheRead} · cache write ${v.overview.amounts.cacheWrite}`] }),
         ] : []),
         Box({ flexDirection: 'row', justifyContent: 'space-between', children: [
@@ -222,7 +223,7 @@ export const register: Register = (on) => {
           ] })] : []),
         ] }),
         ...(isAgentsOpen ? [
-          bar('status', statusParts(v.status), statusSvg(palette, v.status), barCells),
+          bar('status', 'Statusverteilung', statusParts(v.status), statusSvg(palette, v.status), barCells),
           Text({ dimColor: true, children: [statusLine(v.status)] }),
           ...v.groups.map(group),
         ] : []),
