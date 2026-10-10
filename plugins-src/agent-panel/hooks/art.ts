@@ -100,13 +100,16 @@ const CRAB_CSS = '<style>.run .la{animation:st .5s steps(1) infinite}.run .lb{an
   '.run .bd{animation:bob .5s steps(1) infinite -.125s}@keyframes st{50%{transform:translateY(-1px)}}' +
   '@keyframes bob{50%{transform:translateY(1px)}}@media (prefers-reduced-motion: reduce){.run *{animation:none!important}}</style>'
 
+// The desktop crab in CSS pixels, as in the draft.
+export const CRAB_PX = [36, 34] as const
+
 export function crabSvg(costume: string, isRunning: boolean): string {
   const parts: Record<Part, string[]> = { bd: [], la: [], lb: [] }
   for (const [x, y, w, h, color, part] of spriteOf(costume)) {
     parts[part ?? 'bd'].push(`<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${color}"/>`)
   }
   const body = `<g${isRunning ? ' class="run"' : ''}><g class="bd">${parts.bd.join('')}</g><g class="la">${parts.la.join('')}</g><g class="lb">${parts.lb.join('')}</g></g>`
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="34" viewBox="0 0 ${GRID_W} ${GRID_H}" shape-rendering="crispEdges">${CRAB_CSS}${body}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${CRAB_PX[0]}" height="${CRAB_PX[1]}" viewBox="0 0 ${GRID_W} ${GRID_H}" shape-rendering="crispEdges">${CRAB_CSS}${body}</svg>`
 }
 
 export type Segment = { text: string; color: string }

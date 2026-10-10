@@ -290,4 +290,4 @@ Der erste Stand wich in der Desktop-App sichtbar von `entwurf-v5.html` und
 - **Karten** in der Desktop-App mit eigenem Hintergrund und Rand
   (hell `#ffffff`/`#e9e7e2`, dunkel `#262523`/`#3a3936`); im Terminal nicht.
 - **Titel** `Lauf <id>`, dahinter gedimmt `· Gen 1–n`.
-- **Krabbe** 36×34 px wie im Entwurf.
+- **Krabbe** 36×34 px wie im Entwurf, fest: Sie schrumpft auch in der aufgeklappten Karte nicht.

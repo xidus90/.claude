@@ -1,6 +1,6 @@
 import type { ElementTable, EngineInterface, Register } from 'claude-code'
 import type { SessionInfo, Summary } from '../shared/summary.ts'
-import { blockBar, CARD_GAP, COST_H, costBarSvg, costParts, crabRaster, crabSvg, layoutOf, legendColors, paletteOf, RULE_H, ruleSvg, STATUS_COLOR, STATUS_H, statusParts, statusSvg, stripeSvg, tokenParts, type BarPart, type Palette } from './art.ts'
+import { blockBar, CARD_GAP, COST_H, costBarSvg, costParts, crabRaster, crabSvg, CRAB_PX, layoutOf, legendColors, paletteOf, RULE_H, ruleSvg, STATUS_COLOR, STATUS_H, statusParts, statusSvg, stripeSvg, tokenParts, type BarPart, type Palette } from './art.ts'
 import { EMPTY_LOG, onSpawn, type SpawnLog } from './open.ts'
 import { costumeOf } from './sprites.ts'
 import { buildView, countItems, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, isGone, listArgs, moreLine, OWN, parseResult, pickerOptions, reportedCost, rowLine, scriptArgs, sessionsOf, startError, statusItems, visibleRows, type Group, type LiveAgent, type Row, type StatusItem, type View } from './view.ts'
@@ -222,7 +222,8 @@ export const register: Register = (on) => {
         : svg(key, source, alt, height)
       const crab = (g: Group) => isTerminal
         ? $.ui.resolve(e).Raster({ key: `crab-${g.role}`, ...crabRaster(costumeOf(g.role)) })
-        : Box({ key: `crab-${g.role}`, children: [$.ui.resolve(e).Svg({ source: crabSvg(costumeOf(g.role), g.isRunning), alt: `Krabbe ${g.title}` })] })
+        // Its own size, which the rows beside it in an open card would otherwise squeeze.
+        : Box({ key: `crab-${g.role}`, flexShrink: 0, children: [$.ui.resolve(e).Svg({ source: crabSvg(costumeOf(g.role), g.isRunning), alt: `Krabbe ${g.title}`, width: CRAB_PX[0], height: CRAB_PX[1] })] })
       const colored = (items: StatusItem[]) => items.flatMap((item, i) => [...(i ? [Text({ children: [' '] })] : []), Text({ color: STATUS_COLOR[item.status], children: [item.text] })])
       // A section head reads in grey capitals; folded, it carries its summary after the name.
       const heading = (key: string, isOpen: boolean, name: string, folded: ReturnType<typeof Text>[], onPress: () => void) => Button({ key, plain: true, onPress, children: [

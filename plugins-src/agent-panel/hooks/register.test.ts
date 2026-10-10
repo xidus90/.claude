@@ -537,6 +537,21 @@ test('each agent row of a card keeps a blank line above it, after the cost bar a
   for (const r of rows) expect(r.props.marginTop).toBe(1)
 })
 
+test('an open role card keeps its crab at the size of a folded one', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(WIDE('desktop'))
+  const crab = await ui.find({ key: 'crab-implementer-backend' })
+  // The rows beside it would squeeze it otherwise.
+  expect(crab?.props.flexShrink).toBe(0)
+  const svg = (crab?.children ?? []).find((c) => typeof c === 'object' && c !== null && (c as { type?: string }).type === 'Svg') as { props: Record<string, unknown> } | undefined
+  expect([svg?.props.width, svg?.props.height]).toEqual([36, 34])
+})
+
 test('the role cards keep a line of space between them, and the Agents block one above its rule', async ($, on) => {
   const clock = mock.clock(on)
   stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
