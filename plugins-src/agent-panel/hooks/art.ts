@@ -111,8 +111,11 @@ export type Segment = { text: string; color: string }
 export function blockBar(parts: BarPart[], width: number, track: string): Segment[] {
   const out: Segment[] = []
   let used = 0
+  let sum = 0
+  // Round the running total, not each part, so rounding neither takes a cell from a later part nor leaves a gap.
   for (const part of parts) {
-    const n = Math.min(width - used, Math.round(part.share * width))
+    sum += part.share
+    const n = Math.min(width, Math.round(sum * width)) - used
     if (n <= 0) continue
     out.push({ text: '█'.repeat(n), color: part.color })
     used += n

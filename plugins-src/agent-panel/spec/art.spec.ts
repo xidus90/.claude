@@ -110,6 +110,20 @@ test('leaves out block bar parts that round to no cell and clips the rest to the
   assert.deepEqual(bar, [{ text: '████', color: '#333333' }])
 })
 
+const cells = (bar: { text: string; color: string }[], color: string): number => bar.filter((s) => s.color === color).reduce((n, s) => n + s.text.length, 0)
+
+test('keeps a status that is worth a whole cell when earlier parts round up', () => {
+  // 1 of 11 agents failed: 10/11 of a cell, but the two halves before it round up and used to take its cell.
+  const bar = blockBar(statusParts({ running: 5, done: 5, failed: 1, aborted: 0 }), 10, '#999999')
+  assert.equal(cells(bar, STATUS_COLOR.failed), 1)
+})
+
+test('fills the whole block bar when the shares add up to one', () => {
+  const third = 1 / 3
+  const bar = blockBar([{ share: third, color: '#111111' }, { share: third, color: '#222222' }, { share: third, color: '#333333' }], 10, '#999999')
+  assert.equal(cells(bar, '#999999'), 0)
+})
+
 test('packs the crab into a 15×7 raster of half blocks', () => {
   const r = crabRaster('plain')
   assert.equal(r.columns, 15)
