@@ -221,14 +221,19 @@ export const register: Register = (on) => {
           bar('stripe-total', 'Tokenverteilung', tokenParts(palette, v.overview.shares), stripeSvg(palette, v.overview.shares, 10), barCells),
           Text({ dimColor: true, children: [`in ${v.overview.amounts.input} · out ${v.overview.amounts.output} · cache read ${v.overview.amounts.cacheRead} · cache write ${v.overview.amounts.cacheWrite}`] }),
         ] : []),
-        Box({ flexDirection: 'row', justifyContent: 'space-between', children: [
-          Button({ key: 'sec-agents', plain: true, label: `${isAgentsOpen ? '▾' : '▸'} Agents${isAgentsOpen ? '' : `   ${countsLine(v.status)}`}`, onPress: () => { isAgentsOpen = !isAgentsOpen; redraw() } }),
-          ...(isAgentsOpen ? [Box({ flexDirection: 'row', columnGap: 1, children: [
+        // A narrow pane has no room beside the heading, so the buttons get a row of their own that wraps.
+        ...((() => {
+          const tools = isAgentsOpen ? [Box({ key: 'agents-tools', flexDirection: 'row', flexWrap: 'wrap', columnGap: 2, children: [
             Button({ key: 'hide-done', plain: true, label: isHidingDone ? '[x] Fertige ausblenden' : '[ ] Fertige ausblenden', onPress: () => { isHidingDone = !isHidingDone; redraw() } }),
             Button({ key: 'fold-all', plain: true, label: 'Alle einklappen', onPress: () => { for (const g of v.groups) collapsed.add(g.key); redraw() } }),
             Button({ key: 'open-all', plain: true, label: 'Alle ausklappen', onPress: () => { collapsed.clear(); redraw() } }),
-          ] })] : []),
-        ] }),
+          ] })] : []
+          const head = Box({ key: 'agents-head', flexDirection: 'row', justifyContent: 'space-between', columnGap: 2, children: [
+            Button({ key: 'sec-agents', plain: true, label: `${isAgentsOpen ? '▾' : '▸'} Agents${isAgentsOpen ? '' : `   ${countsLine(v.status)}`}`, onPress: () => { isAgentsOpen = !isAgentsOpen; redraw() } }),
+            ...(isWide ? tools : []),
+          ] })
+          return isWide ? [head] : [head, ...tools]
+        })()),
         ...(isAgentsOpen ? [
           bar('status', 'Statusverteilung', statusParts(v.status), statusSvg(palette, v.status), barCells),
           Text({ dimColor: true, children: [statusLine(v.status)] }),

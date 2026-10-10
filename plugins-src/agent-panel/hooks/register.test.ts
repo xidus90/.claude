@@ -508,3 +508,22 @@ test('a view that cannot be built leaves a warning instead of a blank pane', asy
   expect(await ui.find({ type: 'Text', text: /^⚠ .*no clock/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^⚠ Grafik: / })).toBeUndefined()
 })
+
+test('a narrow pane puts the Agents buttons on a row of their own that wraps', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const sameRow = async () => {
+    const head = await ui.find({ key: 'agents-head' })
+    return JSON.stringify(head?.children ?? []).includes('"agents-tools"')
+  }
+  let ui = await $.ui.mount(NARROW('terminal'))
+  expect((await ui.find({ key: 'agents-tools' }))?.props.flexWrap).toBe('wrap')
+  expect(await sameRow()).toBe(false)
+  await ui.unmount()
+  ui = await $.ui.mount(WIDE('terminal'))
+  expect(await sameRow()).toBe(true)
+})

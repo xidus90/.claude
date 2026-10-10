@@ -102,7 +102,8 @@ bisher); jede Entscheidung liegt in `view.ts`, `art.ts` oder `open.ts`.
    Token-Streifen gesamt mit den Zahlen je Art (in, out, cache read,
    cache write).
 3. **▾ Agents:** rechtsbündig in derselben Zeile „Fertige ausblenden“, „Alle
-   einklappen“, „Alle ausklappen“. Darunter der Status-Balken ohne Zahlen und
+   einklappen“, „Alle ausklappen“; im schmalen Panel (unter 70 Spalten) stehen
+   sie in einer eigenen Zeile darunter, die umbricht. Darunter der Status-Balken ohne Zahlen und
    eine Zeile mit den Zahlen: ● läuft, ✓ fertig, ✗ gescheitert, ⊘ abgebrochen.
 4. **Rollen-Karten**, jede einzeln einklappbar. Kopf: Krabbe (breit),
    ▾/▸ Name, Zähler je Status, Kosten; darunter der Kostenbalken (Anteil der
