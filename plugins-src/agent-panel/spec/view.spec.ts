@@ -340,3 +340,8 @@ test('caps a long text by code points, so a pair of surrogates is never cut in t
   assert.equal(long, `${'😀'.repeat(99)}…`)
   assert.equal(exact, 'x'.repeat(100))
 })
+
+test('caps the script error notice at the same length as every other text', () => {
+  const v = buildView(input(null, { error: `summarize exit 1: ${'E'.repeat(300)}` }))
+  assert.equal(v.notices[0], `⚠ summarize exit 1: ${'E'.repeat(81)}…`)
+})

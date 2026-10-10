@@ -28,6 +28,8 @@ export type ViewInput = {
 }
 
 const MISMATCH = 0.1
+// Bounds a pathological name or error, and is no layout rule: the pane cuts a text to its own width, and the
+// longest real ones (an error text keeps 80 characters) stay below this.
 const MAX_TEXT = 100
 
 const LIVE: Record<string, Glyph> = { completed: '✓', failed: '✗', killed: '✗' }

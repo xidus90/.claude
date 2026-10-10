@@ -439,9 +439,12 @@ test('an escape sequence in an agent id does not make the host refuse the pane, 
     expect(await ui.find({ key: 'r-x\u001b[31m1' })).toBeDefined()
     await ui.unmount()
   }
-  const drawn = JSON.stringify(await (await $.ui.mount(NARROW('desktop'))).drawn())
-  expect(drawn.includes('"alt":"Tokenverteilung"')).toBe(true)
-  expect(drawn.includes('"alt":"stripe-')).toBe(false)
+  // The wide scene draws every kind of Svg, and none of them names a key: tiles, status, cost and token bars, crabs.
+  const drawn = JSON.stringify(await (await $.ui.mount(WIDE('desktop'))).drawn())
+  const alts = [...new Set([...drawn.matchAll(/"alt":"([^"]*)"/g)].map((m) => m[1]))].sort()
+  expect(alts).toEqual([
+    'Kostenanteil', 'Krabbe Lead (Orchestrator)', 'Krabbe implementer-backend', 'Statusverteilung', 'Tokenverteilung', '≈ $0.05 · 4k · 0:02',
+  ])
 })
 
 test('a failed theme read falls back to the light palette and still draws', async ($, on) => {
