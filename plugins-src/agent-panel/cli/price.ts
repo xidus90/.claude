@@ -35,8 +35,10 @@ const RATES: Record<string, Rates> = {
 const HAIKU_5_5_LONG: Rates = [0.5, 2.5, 0.05, 0.625, 1]
 const HAIKU_LONG_PROMPT = 100_000
 
+// 3.x ids put the version before the family (claude-3-5-haiku-20241022); the keys put it after.
 export function modelKey(model: string): string {
-  return model.toLowerCase().replace(/\[.*\]$/, '').replace(/^claude-/, '').replace(/-\d{8}$/, '')
+  return model.toLowerCase().replace(/\[.*\]$/, '').replace(/^claude-/, '')
+    .replace(/^(\d+(?:-\d+)?)-(haiku|sonnet|opus)/, '$2-$1').replace(/-(\d{8}|latest)$/, '')
 }
 
 export function costOf(model: string, t: TokenCounts): number | null {

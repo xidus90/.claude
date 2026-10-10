@@ -13,6 +13,13 @@ test('normalizes model ids', () => {
   assert.equal(modelKey('Claude-Sonnet-5-5'), 'sonnet-5-5')
 })
 
+test('puts the version of a 3.x id after its family like every other id', () => {
+  assert.equal(modelKey('claude-3-5-haiku-20241022'), 'haiku-3-5')
+  assert.equal(modelKey('claude-3-5-haiku-latest'), 'haiku-3-5')
+  assert.equal(modelKey('claude-3-7-sonnet-20250219'), 'sonnet-3-7')
+  assert.equal(modelKey('claude-3-opus-20240229'), 'opus-3')
+})
+
 test('prices each token kind of Opus 5.5', () => {
   assert.equal(costOf('claude-opus-5-5', t({ input: M })), 4)
   assert.equal(costOf('claude-opus-5-5', t({ output: M })), 20)
@@ -27,7 +34,8 @@ test('knows every current and older model on the pricing page', () => {
     ['claude-opus-5', 5], ['claude-opus-4-8', 5], ['claude-opus-4-7', 5], ['claude-opus-4-6', 5], ['claude-opus-4-5', 5],
     ['claude-opus-4-1', 15], ['claude-opus-4', 15],
     ['claude-sonnet-5-5', 2], ['claude-sonnet-5', 2], ['claude-sonnet-4-6', 3], ['claude-sonnet-4-5', 3], ['claude-sonnet-4', 3],
-    ['claude-haiku-5-5', 0.5], ['claude-haiku-4-5-20251001', 1], ['claude-haiku-3-5', 0.8],
+    ['claude-haiku-5-5', 0.5], ['claude-haiku-4-5-20251001', 1],
+    ['claude-3-5-haiku-20241022', 0.8], ['claude-3-5-haiku-latest', 0.8], ['claude-haiku-3-5', 0.8],
   ]
   // A million prompt tokens puts Haiku 5.5 past its long-prompt threshold.
   for (const [model, input] of cases) assert.equal(costOf(model, t({ input: M })), input, model)
