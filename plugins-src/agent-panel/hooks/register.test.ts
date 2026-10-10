@@ -524,7 +524,7 @@ test('each agent row of a card keeps a blank line above it, after the cost bar a
   for (const r of rows) expect(r.props.marginTop).toBe(1)
 })
 
-test('the role cards keep a line of space between them on both surfaces', async ($, on) => {
+test('the role cards keep a line of space between them, and the Agents block one above it', async ($, on) => {
   const clock = mock.clock(on)
   stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
   on('config.list', () => ({ value: [] }))
@@ -534,6 +534,7 @@ test('the role cards keep a line of space between them on both surfaces', async 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount(WIDE(surface))
     expect((await ui.find({ key: 'cards' }))?.props.rowGap).toBe(1)
+    expect((await ui.find({ key: 'agents-head' }))?.props.marginTop).toBe(1)
     await ui.unmount()
   }
 })
