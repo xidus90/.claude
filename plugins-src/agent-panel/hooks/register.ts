@@ -304,8 +304,8 @@ export const register: Register = (on) => {
           ] }),
         ] : []),
         isTerminal
-          ? Box({ key: 'rule-agents', marginTop: 1, children: [Text({ dimColor: true, children: ['─'.repeat(barCells)] })] })
-          : Box({ key: 'rule-agents', marginTop: 1, children: [$.ui.resolve(e).Svg({ source: ruleSvg(palette), alt: 'Trennlinie', height: RULE_H })] }),
+          ? Box({ key: 'rule-agents', marginTop: 1, marginBottom: 1, children: [Text({ dimColor: true, children: ['─'.repeat(barCells)] })] })
+          : Box({ key: 'rule-agents', marginTop: 1, marginBottom: 1, children: [$.ui.resolve(e).Svg({ source: ruleSvg(palette), alt: 'Trennlinie', height: RULE_H })] }),
         // A narrow terminal has no room beside the heading, so the buttons get a row of their own that wraps.
         ...((() => {
           const tools = isAgentsOpen ? [Box({ key: 'agents-tools', flexDirection: 'row', flexWrap: 'wrap', columnGap: 1, children: [
@@ -320,7 +320,7 @@ export const register: Register = (on) => {
           return isWide ? [head] : [head, ...tools]
         })()),
         ...(isAgentsOpen ? [
-          bar('status', 'Statusverteilung', statusParts(v.status), statusSvg(palette, v.status), STATUS_H, barCells),
+          Box({ key: 'status-room', marginTop: 1, children: [bar('status', 'Statusverteilung', statusParts(v.status), statusSvg(palette, v.status), STATUS_H, barCells)] }),
           Box({ key: 'status-line', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: 2, children: statusItems(v.status).map((item) => Text({ color: STATUS_COLOR[item.status], children: [item.text] })) }),
           // A line of space between the role cards.
           Box({ key: 'cards', flexDirection: 'column', rowGap: 1, children: v.groups.map(group) }),

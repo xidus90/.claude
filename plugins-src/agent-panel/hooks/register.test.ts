@@ -548,6 +548,10 @@ test('the role cards keep a line of space between them, and the Agents block one
     const ui = await $.ui.mount(WIDE(surface))
     expect((await ui.find({ key: 'cards' }))?.props.rowGap).toBe(1)
     expect((await ui.find({ key: 'rule-agents' }))?.props.marginTop).toBe(1)
+    // A little room below the rule, before the Agents heading.
+    expect((await ui.find({ key: 'rule-agents' }))?.props.marginBottom).toBe(1)
+    // And below the buttons, before the status bar.
+    expect((await ui.find({ key: 'status-room' }))?.props.marginTop).toBe(1)
     await ui.unmount()
   }
 })
