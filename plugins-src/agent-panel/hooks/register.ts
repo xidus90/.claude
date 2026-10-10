@@ -44,13 +44,14 @@ async function refresh($: EngineInterface): Promise<void> {
     await readTheme($)
     const session = await $.session.id()
     const cwd = await $.session.cwd()
-    const { home, tmp } = dirsOf({
+    const { config, tmp } = dirsOf({
       USERPROFILE: await $.env.get('USERPROFILE'),
       HOME: await $.env.get('HOME'),
       TEMP: await $.env.get('TEMP'),
       TMPDIR: await $.env.get('TMPDIR'),
+      CLAUDE_CONFIG_DIR: await $.env.get('CLAUDE_CONFIG_DIR'),
     })
-    const argv = scriptArgs(`${$.plugin.root}/cli/summarize.ts`, session, cwd, home, tmp)
+    const argv = scriptArgs(`${$.plugin.root}/cli/summarize.ts`, session, cwd, config, tmp)
     const parsed = parseResult(await $.process.run(argv, { timeoutMs: 20_000 }))
     if (parsed.summary) summary = parsed.summary
     error = parsed.error

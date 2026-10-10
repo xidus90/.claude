@@ -247,8 +247,8 @@ test('reads the reported cost', () => {
 })
 
 test('builds the script call', () => {
-  assert.deepEqual(scriptArgs('P/cli/summarize.ts', 's1', 'C:/repo', 'C:/Users/u', 'C:/tmp'), [
-    'node', 'P/cli/summarize.ts', '--session', 's1', '--cwd', 'C:/repo', '--home', 'C:/Users/u', '--cache', 'C:/tmp/agent-panel/s1.json',
+  assert.deepEqual(scriptArgs('P/cli/summarize.ts', 's1', 'C:/repo', 'C:/Users/u/.claude', 'C:/tmp'), [
+    'node', 'P/cli/summarize.ts', '--session', 's1', '--cwd', 'C:/repo', '--config', 'C:/Users/u/.claude', '--cache', 'C:/tmp/agent-panel/s1.json',
   ])
 })
 
@@ -258,9 +258,14 @@ test('sorts an agent without a first time as if it started at zero', () => {
 })
 
 test('dirsOf prefers the Windows variables, falls back to POSIX, then to defaults', () => {
-  assert.deepEqual(dirsOf({ USERPROFILE: 'U', HOME: 'H', TEMP: 'T', TMPDIR: 'D' }), { home: 'U', tmp: 'T' })
-  assert.deepEqual(dirsOf({ HOME: 'H', TMPDIR: 'D' }), { home: 'H', tmp: 'D' })
-  assert.deepEqual(dirsOf({}), { home: '', tmp: '/tmp' })
+  assert.deepEqual(dirsOf({ USERPROFILE: 'U', HOME: 'H', TEMP: 'T', TMPDIR: 'D' }), { config: 'U/.claude', tmp: 'T' })
+  assert.deepEqual(dirsOf({ HOME: 'H', TMPDIR: 'D' }), { config: 'H/.claude', tmp: 'D' })
+  assert.deepEqual(dirsOf({}), { config: '/.claude', tmp: '/tmp' })
+})
+
+test('dirsOf takes the config folder Claude Code was started with', () => {
+  assert.deepEqual(dirsOf({ USERPROFILE: 'U', CLAUDE_CONFIG_DIR: 'C:/Users/u/.claude-b', TEMP: 'T' }), { config: 'C:/Users/u/.claude-b', tmp: 'T' })
+  assert.deepEqual(dirsOf({ USERPROFILE: 'U', CLAUDE_CONFIG_DIR: '', TEMP: 'T' }), { config: 'U/.claude', tmp: 'T' })
 })
 
 test('toggle adds a missing key and removes a present one', () => {

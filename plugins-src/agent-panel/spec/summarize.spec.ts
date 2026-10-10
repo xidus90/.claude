@@ -7,13 +7,13 @@ import { main, summarize } from '../cli/summarize.ts'
 import type { Summary } from '../shared/summary.ts'
 import { apiError, assistant, tempDir } from './helpers.ts'
 
-type World = { home: string; repo: string; cache: string; projects: string }
+type World = { home: string; config: string; repo: string; cache: string; projects: string }
 
 function world(): World {
   const home = tempDir()
   const repo = tempDir()
   const projects = join(home, '.claude', 'projects')
-  return { home, repo, cache: join(tempDir(), 'agent-panel', 's.json'), projects }
+  return { home, config: join(home, '.claude'), repo, cache: join(tempDir(), 'agent-panel', 's.json'), projects }
 }
 
 function lead(w: World, folder: string, session: string, body: string): string {
@@ -37,7 +37,7 @@ function teamRun(w: World, sessions: string[]): void {
   writeFileSync(join(w.repo, '.team-runs', 'r1', 'run.json'), JSON.stringify({ generation: sessions.length, sessions }))
 }
 
-const opts = (w: World, session: string) => ({ session, cwd: w.repo, home: w.home, cache: w.cache })
+const opts = (w: World, session: string) => ({ session, cwd: w.repo, config: w.config, cache: w.cache })
 
 test('summarizes a plain session: the lead and its subagents', () => {
   const w = world()
@@ -217,7 +217,7 @@ test('main prints a finite cost and numeric tokens for counts out of range or of
   const line = (id: string, input: string) => assistant({ id, usage: { input_tokens: '@@', output_tokens: 20 } }).replace('"@@"', input)
   lead(w, 'C--repo', 's1', line('m1', '1e999') + line('m2', '"7"'))
   let out = ''
-  main(['--session', 's1', '--cwd', w.repo, '--home', w.home, '--cache', w.cache], (s) => (out += s), () => {})
+  main(['--session', 's1', '--cwd', w.repo, '--config', w.config, '--cache', w.cache], (s) => (out += s), () => {})
   const a = (JSON.parse(out) as Summary).agents[0]
   assert.equal(a?.tokens.input, 0)
   assert.equal(a?.tokens.output, 40)
@@ -228,7 +228,7 @@ test('main prints one JSON line and returns 0', () => {
   const w = world()
   lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
   let out = ''
-  const code = main(['--session', 's1', '--cwd', w.repo, '--home', w.home, '--cache', w.cache], (s) => (out += s), () => {})
+  const code = main(['--session', 's1', '--cwd', w.repo, '--config', w.config, '--cache', w.cache], (s) => (out += s), () => {})
   assert.equal(code, 0)
   assert.ok(out.endsWith('\n'))
   assert.equal((JSON.parse(out) as Summary).agents.length, 1)
@@ -240,7 +240,7 @@ test('main summarizes in full when a file sits where the cache folder should be'
   let out = ''
   const root = tempDir()
   writeFileSync(join(root, 'agent-panel'), '')
-  const code = main(['--session', 's1', '--cwd', w.repo, '--home', w.home, '--cache', join(root, 'agent-panel', 's.json')], (s) => (out += s), () => {})
+  const code = main(['--session', 's1', '--cwd', w.repo, '--config', w.config, '--cache', join(root, 'agent-panel', 's.json')], (s) => (out += s), () => {})
   const s = JSON.parse(out) as Summary
   assert.equal(code, 0)
   assert.deepEqual([s.agents.map((a) => a.id), s.problems], [['lead:s1'], []])
@@ -273,7 +273,7 @@ test('main reports a failure inside the summary and still returns 0', () => {
   let out = ''
   // A file where the run folder should be makes the run lookup throw.
   writeFileSync(join(w.repo, '.team-runs'), '')
-  const code = main(['--session', 's1', '--cwd', w.repo, '--home', w.home, '--cache', w.cache], (s) => (out += s), () => {})
+  const code = main(['--session', 's1', '--cwd', w.repo, '--config', w.config, '--cache', w.cache], (s) => (out += s), () => {})
   const s = JSON.parse(out) as Summary
   assert.equal(code, 0)
   assert.deepEqual([s.generations, s.agents], [['s1'], []])
@@ -291,7 +291,7 @@ test('runs as a script', () => {
   const w = world()
   lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
   const script = join(import.meta.dirname, '..', 'cli', 'summarize.ts')
-  const r = spawnSync(process.execPath, [script, '--session', 's1', '--cwd', w.repo, '--home', w.home, '--cache', w.cache], { encoding: 'utf8' })
+  const r = spawnSync(process.execPath, [script, '--session', 's1', '--cwd', w.repo, '--config', w.config, '--cache', w.cache], { encoding: 'utf8' })
   assert.equal(r.status, 0, r.stderr)
   assert.equal((JSON.parse(r.stdout) as Summary).agents[0]?.id, 'lead:s1')
 })

@@ -113,7 +113,7 @@ Node kann; `hooks/` läuft im Mod und darf nur `$`.
 
 | Datei | Aufgabe | Hängt ab von |
 |---|---|---|
-| `cli/summarize.ts` | Einstieg: `node summarize.ts --session <id> --cwd <dir> --home <dir> --cache <datei>`; druckt die Zusammenfassung als eine JSON-Zeile auf stdout, Exit 0 auch bei Lesefehlern (sie stehen in der Zusammenfassung). | die übrigen in `cli/` |
+| `cli/summarize.ts` | Einstieg: `node summarize.ts --session <id> --cwd <dir> --config <dir> --cache <datei>` (`--config`: `CLAUDE_CONFIG_DIR`, sonst `~/.claude`); druckt die Zusammenfassung als eine JSON-Zeile auf stdout, Exit 0 auch bei Lesefehlern (sie stehen in der Zusammenfassung). | die übrigen in `cli/` |
 | `cli/scan.ts` | Sitzungen der laufenden Sitzung bestimmen: die eigene ID; führt ein `<cwd>/.team-runs/*/run.json` sie in `sessions`, alle Sitzungen dieses Laufs. Dateien je Sitzung über die ID unter `<home>/.claude/projects/*/` finden. | `node:fs` |
 | `cli/transcript.ts` | Eine `.jsonl` ab gemerktem Byte-Offset lesen: Tokens je Art und Modell, erste/letzte Zeit, Endzustand, unlesbare Zeilen. | `node:fs` |
 | `cli/cache.ts` | Offsets und Teilsummen je Datei in der Cache-Datei laden und speichern. | `node:fs` |

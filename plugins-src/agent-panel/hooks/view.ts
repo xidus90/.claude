@@ -356,14 +356,21 @@ export function reportedCost(cost: unknown): number | null {
   return null
 }
 
-export function scriptArgs(script: string, session: string, cwd: string, home: string, tmp: string): string[] {
-  return ['node', script, '--session', session, '--cwd', cwd, '--home', home, '--cache', `${tmp}/agent-panel/${session}.json`]
+export function scriptArgs(script: string, session: string, cwd: string, config: string, tmp: string): string[] {
+  return ['node', script, '--session', session, '--cwd', cwd, '--config', config, '--cache', `${tmp}/agent-panel/${session}.json`]
 }
 
-export type DirEnv = { USERPROFILE?: string | undefined; HOME?: string | undefined; TEMP?: string | undefined; TMPDIR?: string | undefined }
+export type DirEnv = {
+  USERPROFILE?: string | undefined
+  HOME?: string | undefined
+  TEMP?: string | undefined
+  TMPDIR?: string | undefined
+  CLAUDE_CONFIG_DIR?: string | undefined
+}
 
-export const dirsOf = (env: DirEnv): { home: string; tmp: string } => ({
-  home: env.USERPROFILE ?? env.HOME ?? '',
+// Claude Code keeps its transcripts under CLAUDE_CONFIG_DIR when set, as a second account does.
+export const dirsOf = (env: DirEnv): { config: string; tmp: string } => ({
+  config: env.CLAUDE_CONFIG_DIR || `${env.USERPROFILE ?? env.HOME ?? ''}/.claude`,
   tmp: env.TEMP ?? env.TMPDIR ?? '/tmp',
 })
 

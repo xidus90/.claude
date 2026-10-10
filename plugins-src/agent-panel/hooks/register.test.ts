@@ -44,7 +44,7 @@ function stub(
   on('command.register', () => ({ value: undefined }))
   on('session.id', () => ({ value: 's1' }))
   on('session.cwd', () => ({ value: '/work' }))
-  mock.env(on, { USERPROFILE: 'C:/Users/u', TEMP: 'C:/tmp' })
+  mock.env(on, { USERPROFILE: 'C:/Users/u', TEMP: 'C:/tmp', CLAUDE_CONFIG_DIR: 'C:/Users/u/.claude-b' })
   on('process.run', async ($, e) => {
     runs.push(e.argv)
     return deny ? { deny } : { value: await answer() }
@@ -85,6 +85,8 @@ test('the tick runs the summary script with the session and draws its totals', a
   await $.command.run(TOGGLE)
   await clock.advance(2000)
   expect(runs[0]?.slice(2, 4)).toEqual(['--session', 's1'])
+  // A second account runs Claude Code from its own config folder; its transcripts live there.
+  expect(runs[0]?.slice(6, 8)).toEqual(['--config', 'C:/Users/u/.claude-b'])
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect(await ui.find({ type: 'Text', text: /^Kosten ≈ \$0\.02/ })).toBeDefined()
 })
