@@ -2,12 +2,13 @@ import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs'
 import { costOf } from './price.ts'
 import type { EndState, TokenCounts } from '../shared/summary.ts'
 
+// A transcript line is untrusted JSON, so every count is unknown until count() has checked it.
 type Usage = {
-  input_tokens?: number
-  output_tokens?: number
-  cache_read_input_tokens?: number
-  cache_creation_input_tokens?: number
-  cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number }
+  input_tokens?: unknown
+  output_tokens?: unknown
+  cache_read_input_tokens?: unknown
+  cache_creation_input_tokens?: unknown
+  cache_creation?: { ephemeral_5m_input_tokens?: unknown; ephemeral_1h_input_tokens?: unknown }
 }
 
 type Line = {
@@ -51,14 +52,17 @@ export function emptyState(): FileState {
   return { offset: 0, done: zero(), doneCost: 0, unpriced: false, pending: null, model: '', effort: '', firstAt: null, lastAt: null, hasAnswer: false, errorText: '', unreadable: 0 }
 }
 
+// Anything but a safe non-negative integer counts as 0: a wild value would put Infinity or text into the sums.
+const count = (v: unknown): number => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : 0)
+
 function tokensOf(u: Usage): TokenCounts {
   const c = u.cache_creation
   return {
-    input: u.input_tokens ?? 0,
-    output: u.output_tokens ?? 0,
-    cacheRead: u.cache_read_input_tokens ?? 0,
-    cacheWrite5m: c ? (c.ephemeral_5m_input_tokens ?? 0) : (u.cache_creation_input_tokens ?? 0),
-    cacheWrite1h: c ? (c.ephemeral_1h_input_tokens ?? 0) : 0,
+    input: count(u.input_tokens),
+    output: count(u.output_tokens),
+    cacheRead: count(u.cache_read_input_tokens),
+    cacheWrite5m: count(c ? c.ephemeral_5m_input_tokens : u.cache_creation_input_tokens),
+    cacheWrite1h: count(c ? c.ephemeral_1h_input_tokens : 0),
   }
 }
 

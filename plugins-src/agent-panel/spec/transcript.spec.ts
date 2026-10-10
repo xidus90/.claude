@@ -194,3 +194,37 @@ test('flags a prototype-named model as unpriced and keeps the cost finite', () =
   assert.equal(t.unpriced, true)
   assert.equal(t.costUsd, 20)
 })
+
+// JSON text, not values: 1e999 and the odd shapes must reach the parser as written.
+const BAD_COUNTS = ['1e999', '-1e999', '1e308', '9007199254740992', '"7"', '"NaN"', '-5', '1.5', 'null', 'true', '[5]', '{}', '{"toString":0}', '{"valueOf":0,"toString":0}']
+const withCount = (usage: Record<string, unknown>, count: string) => assistant({ id: 'm1', usage }).replaceAll('"@@"', count)
+
+test('counts a token count that is not a safe non-negative integer as 0, in every field', () => {
+  const flat = { input_tokens: '@@', output_tokens: '@@', cache_read_input_tokens: '@@', cache_creation_input_tokens: '@@' }
+  const split = { cache_creation: { ephemeral_5m_input_tokens: '@@', ephemeral_1h_input_tokens: '@@' } }
+  for (const bad of BAD_COUNTS) {
+    for (const usage of [flat, split]) {
+      assert.deepEqual(totals(read(withCount(usage, bad))).tokens, { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 }, bad)
+    }
+  }
+})
+
+test('prices a message from its valid counts when another one is dropped', () => {
+  for (const bad of BAD_COUNTS) {
+    const t = totals(read(withCount({ input_tokens: '@@', output_tokens: 1_000_000 }, bad)))
+    assert.equal(t.costUsd, 20, bad)
+    assert.equal(t.unpriced, false, bad)
+    assert.equal(t.tokens.output, 1_000_000, bad)
+  }
+})
+
+test('keeps a dropped count out of the totals once a later message settles it', () => {
+  const s = read(withCount({ input_tokens: '@@', output_tokens: 5 }, '{"toString":0}') + assistant({ id: 'm2' }))
+  assert.deepEqual(totals(s).tokens, { input: 10, output: 25, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 })
+})
+
+test('accepts the largest safe count and keeps the cost finite', () => {
+  const t = totals(read(withCount({ input_tokens: '@@' }, String(Number.MAX_SAFE_INTEGER))))
+  assert.equal(t.tokens.input, Number.MAX_SAFE_INTEGER)
+  assert.ok(Number.isFinite(t.costUsd))
+})

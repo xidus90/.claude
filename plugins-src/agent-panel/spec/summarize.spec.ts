@@ -130,6 +130,27 @@ test('reports a transcript it cannot read and goes on', () => {
   assert.match(s.problems[0] ?? '', /^kann .*agent-a1\.jsonl nicht lesen: /)
 })
 
+test('a last line with a hostile token count does not take down the whole summary', () => {
+  const w = world()
+  const hostile = { input_tokens: { toString: 0 }, output_tokens: 5, cache_creation: { ephemeral_1h_input_tokens: { toString: 0 } } }
+  lead(w, 'C--repo', 's1', assistant({ id: 'm1' }) + assistant({ id: 'm2', usage: hostile }))
+  const s = summarize(opts(w, 's1'))
+  assert.deepEqual(s.problems, [])
+  assert.deepEqual(s.agents.map((a) => a.tokens), [{ input: 10, output: 25, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 }])
+})
+
+test('main prints a finite cost and numeric tokens for counts out of range or of the wrong type', () => {
+  const w = world()
+  const line = (id: string, input: string) => assistant({ id, usage: { input_tokens: '@@', output_tokens: 20 } }).replace('"@@"', input)
+  lead(w, 'C--repo', 's1', line('m1', '1e999') + line('m2', '"7"'))
+  let out = ''
+  main(['--session', 's1', '--cwd', w.repo, '--home', w.home, '--cache', w.cache], (s) => (out += s), () => {})
+  const a = (JSON.parse(out) as Summary).agents[0]
+  assert.equal(a?.tokens.input, 0)
+  assert.equal(a?.tokens.output, 40)
+  assert.equal(a?.costUsd, 40 * 20 / 1e6)
+})
+
 test('main prints one JSON line and returns 0', () => {
   const w = world()
   lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
