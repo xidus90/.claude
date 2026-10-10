@@ -163,6 +163,11 @@ test('parses the script result', () => {
   assert.deepEqual(parseResult({ exitCode: 0, stdout: '{}', stderr: '' }), { summary: null, error: 'summarize: unerwartete Ausgabe' })
 })
 
+test('leaves cutting a long script error to the one cap of the view', () => {
+  const stderr = 'E'.repeat(300)
+  assert.equal(parseResult({ exitCode: 1, stdout: '', stderr }).error, `summarize exit 1: ${stderr}`)
+})
+
 test('words a failed start', () => {
   assert.equal(startError(new Error('spawn node ENOENT')), 'node nicht gefunden: spawn node ENOENT')
   assert.equal(startError('timed out'), 'summarize gescheitert: timed out')

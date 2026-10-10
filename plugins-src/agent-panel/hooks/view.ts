@@ -262,7 +262,7 @@ export const detailLine = (r: Row): string => `      ${r.detail}`
 export const glyphColor = (g: Glyph): string => COLORS[g]
 
 export function parseResult(r: { exitCode: number; stdout: string; stderr: string }): { summary: Summary | null; error: string } {
-  if (r.exitCode !== 0) return { summary: null, error: `summarize exit ${r.exitCode}: ${r.stderr.trim().slice(0, 200)}` }
+  if (r.exitCode !== 0) return { summary: null, error: `summarize exit ${r.exitCode}: ${r.stderr.trim()}` }
   try {
     const data = JSON.parse(r.stdout) as Partial<Summary>
     return Array.isArray(data.agents) ? { summary: data as Summary, error: '' } : { summary: null, error: 'summarize: unerwartete Ausgabe' }
