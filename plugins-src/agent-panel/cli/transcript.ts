@@ -13,7 +13,7 @@ type Usage = {
 
 type Line = {
   type?: string
-  timestamp?: string
+  timestamp?: unknown
   effort?: unknown
   isApiErrorMessage?: boolean
   message?: { id?: string; model?: unknown; stop_reason?: string | null; usage?: Usage; content?: unknown }
@@ -109,7 +109,7 @@ export function applyLines(prev: FileState, text: string): FileState {
       s = { ...s, unreadable: s.unreadable + 1 }
       continue
     }
-    const at = Date.parse(line.timestamp ?? '')
+    const at = typeof line.timestamp === 'string' ? Date.parse(line.timestamp) : Number.NaN
     if (!Number.isNaN(at)) s = { ...s, firstAt: s.firstAt ?? at, lastAt: at }
     if (typeof line.effort === 'string' && line.effort !== '') s = { ...s, effort: line.effort }
     if (line.type === 'assistant') s = applyAssistant(s, line)

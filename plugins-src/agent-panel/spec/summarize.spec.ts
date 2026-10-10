@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { main, summarize } from '../cli/summarize.ts'
 import type { Summary } from '../shared/summary.ts'
@@ -65,6 +65,28 @@ test('one line with a model that is not a string does not take down the whole su
   const s = summarize(opts(w, 's1'))
   assert.equal(s.agents.find((a) => a.kind === 'lead')?.tokens.output, 20)
   assert.equal(s.agents.find((a) => a.id === 'a1')?.tokens.output, 20)
+})
+
+test('an agent meta whose type or name is not a string does not take down the whole summary', () => {
+  const w = world()
+  const l = lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
+  agent(l, 'a1', { name: { toString: 0 }, customAgentType: 5 }, assistant({ id: 'x1' }))
+  const s = summarize(opts(w, 's1'))
+  assert.deepEqual(s.problems, [])
+  assert.equal(s.agents.find((a) => a.id === 'a1')?.tokens.output, 20)
+})
+
+test('a cache entry of the wrong shape is read from scratch, not kept forever', () => {
+  const w = world()
+  const l = lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
+  summarize(opts(w, 's1'))
+  const data = JSON.parse(readFileSync(w.cache, 'utf8')) as { files: Record<string, unknown> }
+  data.files[l] = {}
+  writeFileSync(w.cache, JSON.stringify(data))
+  summarize(opts(w, 's1'))
+  const s = summarize(opts(w, 's1'))
+  assert.deepEqual(s.problems, [])
+  assert.equal(s.agents[0]?.tokens.output, 20)
 })
 
 test('summarizes every generation of a team run, wherever its transcript lives', () => {

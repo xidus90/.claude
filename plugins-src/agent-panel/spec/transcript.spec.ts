@@ -228,3 +228,8 @@ test('accepts the largest safe count and keeps the cost finite', () => {
   assert.equal(t.tokens.input, Number.MAX_SAFE_INTEGER)
   assert.ok(Number.isFinite(t.costUsd))
 })
+
+test('a timestamp that is not a string counts as missing instead of throwing', () => {
+  const s = read(JSON.stringify({ type: 'user', timestamp: { toString: 0 } }) + '\n' + JSON.stringify({ type: 'user', timestamp: { valueOf: 0, toString: 0 } }) + '\n')
+  assert.equal(s.firstAt, null)
+})

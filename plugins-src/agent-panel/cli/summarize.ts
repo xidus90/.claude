@@ -65,7 +65,15 @@ export function summarize(o: Options): Summary {
     for (const src of sources) {
       let state: FileState
       try {
-        state = readTranscript(src.transcript, cache.files[src.transcript] ?? emptyState())
+        const cached = cache.files[src.transcript]
+        try {
+          state = readTranscript(src.transcript, cached ?? emptyState())
+        } catch (err) {
+          // A damaged cache entry throws; the transcript is the truth, so read it once more from scratch.
+          // ponytail: an entry damaged without a throw stays trusted; validate its shape if a foreign cache matters.
+          if (!cached) throw err
+          state = readTranscript(src.transcript, emptyState())
+        }
       } catch (err) {
         problems.push(`kann ${src.transcript} nicht lesen: ${(err as Error).message}`)
         continue
