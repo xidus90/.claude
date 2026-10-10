@@ -461,3 +461,50 @@ test('a failed theme read falls back to the light palette and still draws', asyn
   expect(drawn.includes(LIGHT.tile)).toBe(true)
   expect(drawn.includes(DARK.tile)).toBe(false)
 })
+
+// summarize writes a non-finite cost as null.
+const NULL_COST = JSON.stringify({ runId: null, generations: ['s1'], agents: [{ ...LEAD, costUsd: null }], unreadableLines: 0, problems: [] })
+
+test('a summary with a null cost still draws, as an unpriced agent, on both surfaces', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: NULL_COST, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount(NARROW(surface))
+    expect(await ui.find({ type: 'Text', text: 'ohne 1 Agents' })).toBeDefined()
+    expect(await ui.find({ key: 'sec-overview' })).toBeDefined()
+    await ui.unmount()
+  }
+})
+
+test('a summary without its lists is refused with a line and keeps the last good one', async ($, on) => {
+  const clock = mock.clock(on)
+  let call = 0
+  stub(on, [], () => ({ exitCode: 0, stdout: ++call === 1 ? GOOD : '{"agents":[]}', stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(NARROW('terminal'))
+  expect(await ui.find({ type: 'Text', text: '⚠ summarize: unerwartete Ausgabe' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^Kosten ≈ \$0\.02/ })).toBeDefined()
+})
+
+test('a view that cannot be built leaves a warning instead of a blank pane', async ($, on) => {
+  let isClockBroken = false
+  on('clock.now', () => (isClockBroken ? { deny: 'no clock' } : { value: 0 }))
+  on('clock.every', () => new Promise<never>(() => {}))
+  stub(on, [], () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  isClockBroken = true
+  const ui = await $.ui.mount(NARROW('terminal'))
+  // The Grafik line is for a drawing that throws; without a view there is nothing to draw.
+  expect(await ui.find({ type: 'Text', text: /^⚠ .*no clock/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^⚠ Grafik: / })).toBeUndefined()
+})

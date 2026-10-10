@@ -167,8 +167,13 @@ export const register: Register = (on) => {
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
-    const v = buildView({ summary, live, reportedCostUsd: reported, costIncludesAgents: REPORTED_COST_INCLUDES_AGENTS, now: await $.clock.now(), error })
     const redraw = () => $.ui.invalidate('ui.render')
+    let v: View
+    try {
+      v = buildView({ summary, live, reportedCostUsd: reported, costIncludesAgents: REPORTED_COST_INCLUDES_AGENTS, now: await $.clock.now(), error })
+    } catch (err) {
+      return Text({ color: 'warning', children: [`⚠ ${err instanceof Error ? err.message : String(err)}`] })
+    }
     try {
       // The terminal draws cells and rasters; every other surface draws SVG, which has no key of its own.
       const { isWide, barCells, cardBarCells } = layoutOf(e.props.bodyColumns)

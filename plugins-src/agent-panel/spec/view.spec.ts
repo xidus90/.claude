@@ -168,6 +168,68 @@ test('leaves cutting a long script error to the one cap of the view', () => {
   assert.equal(parseResult({ exitCode: 1, stdout: '', stderr }).error, `summarize exit 1: ${stderr}`)
 })
 
+// summarize writes its result with JSON.stringify, which turns a non-finite number into null.
+const run = (v: unknown) => parseResult({ exitCode: 0, stdout: JSON.stringify(v), stderr: '' })
+const shown = (r: ReturnType<typeof parseResult>) => buildView(input(r.summary, { error: r.error }))
+
+test('an unpriced cost from the script stays unpriced instead of becoming a price', () => {
+  for (const costUsd of [null, 'many', undefined]) {
+    const r = run(plain([agent({ costUsd: costUsd as unknown as number })]))
+    assert.equal(r.error, '')
+    assert.equal(r.summary?.agents[0]?.costUsd, 0)
+    assert.equal(r.summary?.agents[0]?.unpriced, true)
+    assert.equal(shown(r).overview.unpriced, 'ohne 1 Agents')
+    assert.equal(shown(r).groups[0]?.rows[0]?.cost, '?')
+  }
+})
+
+test('a token count that is not a finite number counts as zero', () => {
+  const tokens = { input: null, output: 'x', cacheRead: 3, cacheWrite5m: undefined, cacheWrite1h: 1 } as unknown as AgentSummary['tokens']
+  const r = run(plain([agent({ tokens })]))
+  assert.deepEqual(r.summary?.agents[0]?.tokens, { input: 0, output: 0, cacheRead: 3, cacheWrite5m: 0, cacheWrite1h: 1 })
+  assert.equal(shown(r).overview.tokens, '4')
+  const none = run(plain([agent({ tokens: undefined as unknown as AgentSummary['tokens'] })]))
+  assert.deepEqual(none.summary?.agents[0]?.tokens, { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 })
+})
+
+test('missing texts, times and end state fall back to empty ones', () => {
+  const bare = { id: 'a', sessionId: 's1', kind: 'agent', tokens: {}, costUsd: 0.5 }
+  const r = run({
+    runId: null,
+    generations: ['s1'],
+    agents: [bare, { ...bare, id: 'b', end: 'error', errorText: 'boom', unpriced: 'yes', firstAt: 5, lastAt: 9 }, { ...bare, id: 'c', end: 'answered', firstAt: 5 }],
+    unreadableLines: 'x',
+    problems: [],
+  })
+  assert.deepEqual(r.summary?.agents[0], {
+    id: 'a', sessionId: 's1', kind: 'agent', name: '', role: '', task: '', model: '', effort: '',
+    tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
+    costUsd: 0.5, unpriced: false, firstAt: null, lastAt: null, end: 'open', errorText: '',
+  })
+  assert.deepEqual(r.summary?.agents.slice(1).map((a) => [a.end, a.errorText, a.unpriced, a.firstAt, a.lastAt]), [['error', 'boom', false, 5, 9], ['answered', '', false, null, null]])
+  assert.equal(r.summary?.unreadableLines, 0)
+  assert.equal(shown(r).groups[0]?.rows.length, 3)
+})
+
+test('a summary of the wrong shape is rejected instead of reaching the view', () => {
+  const ok = plain([agent({})])
+  const bad: unknown[] = [
+    { agents: [] },
+    { ...ok, generations: undefined },
+    { ...ok, generations: [1] },
+    { ...ok, problems: undefined },
+    { ...ok, problems: [null] },
+    { ...ok, runId: 5 },
+    { ...ok, agents: [null] },
+    { ...ok, agents: [[]] },
+    { ...ok, agents: [{ ...agent({}), id: 7 }] },
+    { ...ok, agents: [{ ...agent({}), sessionId: undefined }] },
+    { ...ok, agents: [{ ...agent({}), kind: 'other' }] },
+  ]
+  for (const v of bad) assert.deepEqual(run(v), { summary: null, error: 'summarize: unerwartete Ausgabe' })
+  assert.deepEqual(shown(run(bad[0])).notices, ['⚠ summarize: unerwartete Ausgabe'])
+})
+
 test('words a failed start', () => {
   assert.equal(startError(new Error('spawn node ENOENT')), 'node nicht gefunden: spawn node ENOENT')
   assert.equal(startError('timed out'), 'summarize gescheitert: timed out')

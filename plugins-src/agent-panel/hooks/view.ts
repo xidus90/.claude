@@ -265,11 +265,54 @@ export const detailLine = (r: Row): string => `      ${r.detail}`
 
 export const glyphColor = (g: Glyph): string => COLORS[g]
 
+type Json = Record<string, unknown>
+const isRecord = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
+const finite = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+const text = (v: unknown): string => (typeof v === 'string' ? v : '')
+
+function agentOf(v: unknown): AgentSummary | null {
+  if (!isRecord(v) || typeof v.id !== 'string' || typeof v.sessionId !== 'string' || (v.kind !== 'lead' && v.kind !== 'agent')) return null
+  const t = isRecord(v.tokens) ? v.tokens : {}
+  const cost = finite(v.costUsd)
+  const firstAt = finite(v.firstAt)
+  const lastAt = finite(v.lastAt)
+  const isTimed = firstAt !== null && lastAt !== null
+  return {
+    id: v.id,
+    sessionId: v.sessionId,
+    kind: v.kind,
+    name: text(v.name),
+    role: text(v.role),
+    task: text(v.task),
+    model: text(v.model),
+    effort: text(v.effort),
+    // JSON.stringify turns a non-finite count into null; zero keeps the sums finite.
+    tokens: { input: finite(t.input) ?? 0, output: finite(t.output) ?? 0, cacheRead: finite(t.cacheRead) ?? 0, cacheWrite5m: finite(t.cacheWrite5m) ?? 0, cacheWrite1h: finite(t.cacheWrite1h) ?? 0 },
+    // A cost that is not a number is no price: it counts as unpriced, never as a made-up one.
+    costUsd: cost ?? 0,
+    unpriced: v.unpriced === true || cost === null,
+    firstAt: isTimed ? firstAt : null,
+    lastAt: isTimed ? lastAt : null,
+    end: v.end === 'answered' || v.end === 'error' ? v.end : 'open',
+    errorText: text(v.errorText),
+  }
+}
+
+// The one place untrusted JSON enters the view: what passes here has the types and fields buildView reads.
+function summaryOf(data: unknown): Summary | null {
+  if (!isRecord(data) || !isStrings(data.generations) || !isStrings(data.problems) || !Array.isArray(data.agents)) return null
+  if (data.runId !== null && typeof data.runId !== 'string') return null
+  const agents = data.agents.map(agentOf)
+  if (agents.some((a) => a === null)) return null
+  return { runId: data.runId, generations: data.generations, agents: agents as AgentSummary[], unreadableLines: finite(data.unreadableLines) ?? 0, problems: data.problems }
+}
+
 export function parseResult(r: { exitCode: number; stdout: string; stderr: string }): { summary: Summary | null; error: string } {
   if (r.exitCode !== 0) return { summary: null, error: `summarize exit ${r.exitCode}: ${r.stderr.trim()}` }
   try {
-    const data = JSON.parse(r.stdout) as Partial<Summary>
-    return Array.isArray(data.agents) ? { summary: data as Summary, error: '' } : { summary: null, error: 'summarize: unerwartete Ausgabe' }
+    const summary = summaryOf(JSON.parse(r.stdout))
+    return summary ? { summary, error: '' } : { summary: null, error: 'summarize: unerwartete Ausgabe' }
   } catch {
     return { summary: null, error: 'summarize: Ausgabe ist kein JSON' }
   }
