@@ -44,8 +44,8 @@ Dropdown; bei 20 Sitzungen und Transkripten über 100 MB zu langsam).
 
 | Datei | Aufgabe |
 |---|---|
-| `cli/sessions.ts` (neu) | `listSessions(configs, now, read)`: geht über `<config>/projects/*/*.jsonl` aller Ordner, nimmt die 20 Dateien mit der jüngsten Änderung, liest von jeder höchstens die letzten 64 KB und daraus Titel, letzten Prompt und `cwd`. Ergebnis je Sitzung `{ id, config, project, title, cwd, lastAt, isLive }`. |
-| `cli/summarize.ts` | Neuer Modus `--list --config <dir> [--config <dir>]`: druckt die Liste als eine JSON-Zeile. Der bisherige Aufruf bleibt; für eine fremde Sitzung bekommt er deren ID, Konfigurationsordner und `cwd`. |
+| `cli/sessions.ts` (neu) | `listSessions(configs, now, read)`: geht über `<config>/projects/*/*.jsonl` aller Ordner, nimmt die 20 Dateien mit der jüngsten Änderung, liest von jeder die ersten 16 KB und die letzten 64 KB (der Sitzungstitel kann am Anfang stehen) und daraus Titel, letzten Prompt und `cwd`. Ergebnis je Sitzung `{ id, config, project, title, cwd, lastAt, isLive }`. |
+| `cli/summarize.ts` | Neuer Modus `--list --home <dir> --config <dir>`: listet die Sitzungen aus `--config` und aus jedem Ordner `.claude` oder `.claude-*` im Home, der ein `projects/` hat, und druckt sie als eine JSON-Zeile. Der bisherige Aufruf bleibt; für eine fremde Sitzung bekommt er deren ID, Konfigurationsordner und `cwd`. |
 
 Die Dateien unter `subagents/` sind keine Sitzungen und fehlen in der Liste.
 
