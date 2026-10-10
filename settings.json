@@ -39,17 +39,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "learnings-reminder.exe",
-            "timeout": 10
-          }
-        ]
-      }
     ]
   },
   "statusLine": {
@@ -76,8 +65,7 @@
       "source": {
         "source": "github",
         "repo": "anthropics/claude-plugins-official"
-      },
-      "autoUpdate": true
+      }
     },
     "browser-use": {
       "source": {
@@ -103,6 +91,12 @@
       "source": {
         "source": "git",
         "url": "https://github.com/johnnyvizz/claude-kit.git"
+      }
+    },
+    "claude-config": {
+      "source": {
+        "source": "directory",
+        "path": "C:\\Users\\micro\\.claude"
       }
     }
   },
