@@ -168,7 +168,10 @@ Der Starter legt `<repo>/.team-runs/<lauf>/` an (von git ignoriert), schreibt
 die Settings des Laufs nach `~/.claude/team-settings/` (unversioniert) und
 startet den Orchestrator als Lead. Push und Merge bleiben beim Menschen.
 
-- Lead abgestürzt: `claude-team.ps1 -Resume <lauf>`
+- Lead abgestürzt: `claude-team.ps1 -Resume <lauf>` — in einem Terminal, nicht
+  über `!` in einer Sitzung (dort fehlt die Eingabe). Der Starter verweigert
+  das Fortsetzen (Exit 1), solange ein Prozess mit einer Sitzungs-ID des Laufs
+  noch läuft: Zwei Leads legten dieselben Tasks an.
 - Lauf aufgeben und aufräumen: `claude-team.ps1 -Cleanup <lauf>` (Exit 1,
   wenn etwas übrig bleibt)
 
@@ -195,6 +198,16 @@ dazu die Summe — bei einem Team-Lauf über alle Generationen. `/agent-panel`
 schaltet es an und aus; beim ersten gespawnten Agent öffnet es sich selbst
 (im Terminal erst ab 144 Spalten). Entwurf:
 `docs/.superpowers/specs/2026-10-09-agent-panel-design.md`.
+
+In der Desktop-App zeichnet das Panel Kacheln, einen Token-Streifen
+(in / out / cache read / cache write), einen Status-Balken und je Rolle eine
+Karte; im breiten Fenster (ab 70 Spalten) sitzt in jeder Karte eine
+Pixel-Krabbe mit dem Kostüm der Rolle, die läuft, solange ein Agent der Rolle
+läuft. Das Terminal zeigt denselben Aufbau mit Blockzeichen. Übersicht,
+Agents und jede Rolle lassen sich einklappen; „Fertige ausblenden“ blendet
+erledigte Agents aus. Das Panel folgt dem hellen oder dunklen Theme von
+Claude Code und öffnet sich von selbst, wenn ein Team-Lauf startet oder
+mindestens drei Agents in 30 Sekunden starten.
 
 Die Kosten sind eine Schätzung aus Tokens und einer Preistabelle
 (`cli/price.ts`), kein Abrechnungswert. Weicht die Summe der laufenden Sitzung

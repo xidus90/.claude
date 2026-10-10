@@ -270,6 +270,29 @@ function Remove-ClosedSettings {
     }
 }
 
+function Get-LiveLead {
+    <#
+        Ids of processes started with one of the run's session ids. A resume
+        next to a lead that still runs gives two leads on one run: both
+        create the same tasks, and run.json counts the generation up under
+        the live one.
+    #>
+    [OutputType([int[]])]
+    param([AllowEmptyCollection()][string[]]$Sessions = @())
+    $ids = @($Sessions | Where-Object { $_ })
+    if ($ids.Count -eq 0) { return @() }
+    # Get-Process reads a command line per process through WMI on Windows; one CIM query is far cheaper.
+    $processes = if ($IsWindows) {
+        Get-CimInstance Win32_Process | ForEach-Object { [pscustomobject]@{ Id = [int]$_.ProcessId; CommandLine = $_.CommandLine } }
+    } else {
+        Get-Process | ForEach-Object { [pscustomobject]@{ Id = $_.Id; CommandLine = $_.CommandLine } }
+    }
+    return @($processes | Where-Object {
+            $line = $_.CommandLine
+            $line -and @($ids | Where-Object { $line.Contains("--session-id $_") }).Count -gt 0
+        } | ForEach-Object { $_.Id })
+}
+
 function Invoke-ClaudeTeam {
     [OutputType([int])]
     param([string]$Plan, [string]$Resume, [string]$Cleanup)
@@ -319,6 +342,11 @@ function Invoke-ClaudeTeam {
         $name = $Resume
         $run = Join-Path $repo ".team-runs/$name"
         $meta = Read-RunJson -Run $run
+        $live = @(Get-LiveLead -Sessions @($meta['sessions']))
+        if ($live.Count -gt 0) {
+            Write-Host "claude-team: a lead of run $name still runs (process $($live -join ', ')); stop it first or let it go on" -ForegroundColor Red
+            return 1
+        }
         $meta.generation = [int]$meta.generation + 1
         Write-RunJson -Run $run -Meta $meta
     } else {

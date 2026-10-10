@@ -13,6 +13,13 @@ test('normalizes model ids', () => {
   assert.equal(modelKey('Claude-Sonnet-5-5'), 'sonnet-5-5')
 })
 
+test('puts the version of a 3.x id after its family like every other id', () => {
+  assert.equal(modelKey('claude-3-5-haiku-20241022'), 'haiku-3-5')
+  assert.equal(modelKey('claude-3-5-haiku-latest'), 'haiku-3-5')
+  assert.equal(modelKey('claude-3-7-sonnet-20250219'), 'sonnet-3-7')
+  assert.equal(modelKey('claude-3-opus-20240229'), 'opus-3')
+})
+
 test('prices each token kind of Opus 5.5', () => {
   assert.equal(costOf('claude-opus-5-5', t({ input: M })), 4)
   assert.equal(costOf('claude-opus-5-5', t({ output: M })), 20)
@@ -27,7 +34,8 @@ test('knows every current and older model on the pricing page', () => {
     ['claude-opus-5', 5], ['claude-opus-4-8', 5], ['claude-opus-4-7', 5], ['claude-opus-4-6', 5], ['claude-opus-4-5', 5],
     ['claude-opus-4-1', 15], ['claude-opus-4', 15],
     ['claude-sonnet-5-5', 2], ['claude-sonnet-5', 2], ['claude-sonnet-4-6', 3], ['claude-sonnet-4-5', 3], ['claude-sonnet-4', 3],
-    ['claude-haiku-5-5', 0.5], ['claude-haiku-4-5-20251001', 1], ['claude-haiku-3-5', 0.8],
+    ['claude-haiku-5-5', 0.5], ['claude-haiku-4-5-20251001', 1],
+    ['claude-3-5-haiku-20241022', 0.8], ['claude-3-5-haiku-latest', 0.8], ['claude-haiku-3-5', 0.8],
   ]
   // A million prompt tokens puts Haiku 5.5 past its long-prompt threshold.
   for (const [model, input] of cases) assert.equal(costOf(model, t({ input: M })), input, model)
@@ -47,4 +55,19 @@ test('bills Haiku 5.5 at the long-prompt rates above 100,000 prompt tokens', () 
 test('returns null for a model without a price', () => {
   assert.equal(costOf('opus', t({ input: M })), null)
   assert.equal(costOf('<synthetic>', t({})), null)
+})
+
+test('reads a long model id of brackets in linear time', () => {
+  const started = performance.now()
+  assert.equal(modelKey('['.repeat(100_000)), '['.repeat(100_000))
+  assert.equal(modelKey(`claude-opus-5-5${'[x'.repeat(50_000)}`), `opus-5-5${'[x'.repeat(50_000)}`)
+  assert.equal(modelKey('claude-opus-5[a]b[1m]'), 'opus-5')
+  // The quadratic form took seconds here; linear work stays far below this.
+  assert.ok(performance.now() - started < 500, `${performance.now() - started} ms`)
+})
+
+test('returns null for a model named like an Object.prototype member', () => {
+  for (const model of ['constructor', '__proto__', 'claude-constructor', '__proto__[1m]', 'toString', 'claude-hasOwnProperty']) {
+    assert.equal(costOf(model, t({ output: M })), null, model)
+  }
 })

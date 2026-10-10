@@ -3,20 +3,19 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { loadCache, saveCache } from './cache.ts'
-import { roleOf, taskOf, type Meta } from './classify.ts'
+import { parseMeta, roleOf, taskOf, type Meta } from './classify.ts'
 import { agentFiles, findLead, findRun } from './scan.ts'
 import { emptyState, endOf, readTranscript, totals, type FileState } from './transcript.ts'
 import type { AgentSummary, Summary } from '../shared/summary.ts'
 
-export type Options = { session: string; cwd: string; home: string; cache: string }
+export type Options = { session: string; cwd: string; config: string; cache: string }
 
 type Source = { id: string; transcript: string; meta: string | null }
 
 function metaOf(path: string, known: Record<string, Meta>): Meta | null {
-  const cached = known[path]
-  if (cached) return cached
   try {
-    const meta = JSON.parse(readFileSync(path, 'utf8')) as Meta
+    // The cache file is as untrusted as the meta file it copies from.
+    const meta = parseMeta(known[path] ?? JSON.parse(readFileSync(path, 'utf8')))
     known[path] = meta
     return meta
   } catch {
@@ -36,6 +35,7 @@ function toSummary(src: Source, sessionId: string, state: FileState, meta: Meta 
     role: isLead ? 'lead' : roleOf(meta ?? {}),
     task: isLead ? '' : taskOf(meta?.name ?? '') || name,
     model: state.model,
+    effort: state.effort,
     tokens: t.tokens,
     costUsd: t.costUsd,
     unpriced: t.unpriced,
@@ -50,7 +50,7 @@ export function summarize(o: Options): Summary {
   const cache = loadCache(o.cache)
   const run = findRun(o.cwd, o.session)
   const generations = run ? run.sessions : [o.session]
-  const projects = join(o.home, '.claude', 'projects')
+  const projects = join(o.config, 'projects')
   const agents: AgentSummary[] = []
   const problems: string[] = []
   let unreadableLines = 0
@@ -65,7 +65,15 @@ export function summarize(o: Options): Summary {
     for (const src of sources) {
       let state: FileState
       try {
-        state = readTranscript(src.transcript, cache.files[src.transcript] ?? emptyState())
+        const cached = cache.files[src.transcript]
+        try {
+          state = readTranscript(src.transcript, cached ?? emptyState())
+        } catch (err) {
+          // A damaged cache entry throws; the transcript is the truth, so read it once more from scratch.
+          // ponytail: an entry damaged without a throw stays trusted; validate its shape if a foreign cache matters.
+          if (!cached) throw err
+          state = readTranscript(src.transcript, emptyState())
+        }
       } catch (err) {
         problems.push(`kann ${src.transcript} nicht lesen: ${(err as Error).message}`)
         continue
@@ -75,31 +83,36 @@ export function summarize(o: Options): Summary {
       agents.push(toSummary(src, sessionId, state, src.meta === null ? null : metaOf(src.meta, cache.metas)))
     }
   }
-  saveCache(o.cache, cache)
+  try {
+    saveCache(o.cache, cache)
+  } catch (err) {
+    // The cache only saves work, so the numbers just read are still worth showing.
+    problems.push(`Cache nicht gespeichert: ${(err as Error).message}`)
+  }
   return { runId: run?.runId ?? null, generations, agents, unreadableLines, problems }
 }
 
-const USAGE = 'usage: summarize.ts --session <id> --cwd <dir> --home <dir> --cache <file>\n'
+const USAGE = 'usage: summarize.ts --session <id> --cwd <dir> --config <dir> --cache <file>\n'
 
 export function main(argv: string[], write: (s: string) => void, fail: (s: string) => void): number {
   let values: Partial<Options>
   try {
     values = parseArgs({
       args: argv,
-      options: { session: { type: 'string' }, cwd: { type: 'string' }, home: { type: 'string' }, cache: { type: 'string' } },
+      options: { session: { type: 'string' }, cwd: { type: 'string' }, config: { type: 'string' }, cache: { type: 'string' } },
     }).values
   } catch {
     fail(USAGE)
     return 2
   }
-  const { session, cwd, home, cache } = values
-  if (!session || !cwd || !home || !cache) {
+  const { session, cwd, config, cache } = values
+  if (!session || !cwd || !config || !cache) {
     fail(USAGE)
     return 2
   }
   let summary: Summary
   try {
-    summary = summarize({ session, cwd, home, cache })
+    summary = summarize({ session, cwd, config, cache })
   } catch (err) {
     // The panel shows problems as lines; a non-zero exit would only hide this one.
     summary = { runId: null, generations: [session], agents: [], unreadableLines: 0, problems: [`Zusammenfassung gescheitert: ${(err as Error).message}`] }

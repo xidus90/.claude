@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test-coverage-include=cli/** --test-coverage-include=hooks/view.ts \"spec/**/*.spec.ts\"",
+    "test": "node --test --experimental-test-coverage --test-coverage-lines=100 --test-coverage-branches=100 --test-coverage-functions=100 --test-coverage-include=cli/** --test-coverage-include=hooks/view.ts --test-coverage-include=hooks/sprites.ts --test-coverage-include=hooks/art.ts --test-coverage-include=hooks/open.ts \"spec/**/*.spec.ts\"",
     "typecheck": "tsc -p .",
     "kit": "claude plugin test .",
     "validate": "claude plugin validate . --strict"

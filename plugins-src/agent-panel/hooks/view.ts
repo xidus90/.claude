@@ -2,9 +2,22 @@ import type { AgentSummary, Summary, TokenCounts } from '../shared/summary.ts'
 
 export type LiveAgent = { id: string; status: string }
 export type Glyph = '●' | '✓' | '✗' | '⊘'
-export type Row = { key: string; glyph: Glyph; label: string; model: string; cost: string; tokens: string; time: string; note: string; detail: string }
-export type Group = { key: string; title: string; cost: string; tokens: string; time: string; costUsd: number; isRunning: boolean; rows: Row[] }
-export type View = { title: string; totals: string; counts: string; notices: string[]; groups: Group[] }
+export type Status = 'running' | 'done' | 'failed' | 'aborted'
+export type StatusCounts = Record<Status, number>
+export type Shares = { input: number; output: number; cacheRead: number; cacheWrite: number }
+export type Overview = {
+  cost: string
+  tokens: string
+  time: string
+  shares: Shares
+  amounts: { input: string; output: string; cacheRead: string; cacheWrite: string }
+  line: string
+  // What the cost leaves out, as a line of its own; empty when every agent is priced.
+  unpriced: string
+}
+export type Row = { key: string; glyph: Glyph; status: Status; label: string; model: string; effort: string; cost: string; tokens: string; time: string; note: string; detail: string; shares: Shares; meta: string }
+export type Group = { key: string; role: string; title: string; cost: string; tokens: string; time: string; costUsd: number; costShare: number; isRunning: boolean; counts: StatusCounts; rows: Row[] }
+export type View = { title: string; totals: string; counts: string; notices: string[]; groups: Group[]; status: StatusCounts; overview: Overview }
 export type ViewInput = {
   summary: Summary | null
   live: LiveAgent[]
@@ -15,14 +28,19 @@ export type ViewInput = {
 }
 
 const MISMATCH = 0.1
+// Bounds a pathological name or error, and is no layout rule: the pane cuts a text to its own width, and the
+// longest real ones (an error text keeps 80 characters) stay below this.
+const MAX_TEXT = 100
 
 const LIVE: Record<string, Glyph> = { completed: '✓', failed: '✗', killed: '✗' }
 const COLORS: Record<Glyph, string> = { '●': 'cyan', '✓': 'green', '✗': 'red', '⊘': 'yellow' }
 
 export const fmtCost = (usd: number): string => `$${usd < 10 ? usd.toFixed(2) : usd.toFixed(1)}`
 
-export const fmtTokens = (n: number): string =>
-  n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}k` : `${n}`
+export const fmtTokens = (n: number): string => {
+  const k = Math.round(n / 1e3)
+  return k >= 1e3 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${k}k` : `${n}`
+}
 
 export function fmtTime(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000))
@@ -34,8 +52,33 @@ export function fmtTime(ms: number): string {
 
 const tokenSum = (t: TokenCounts): number => t.input + t.output + t.cacheRead + t.cacheWrite5m + t.cacheWrite1h
 
+const STATUS_OF: Record<Glyph, Status> = { '●': 'running', '✓': 'done', '✗': 'failed', '⊘': 'aborted' }
+const noCounts = (): StatusCounts => ({ running: 0, done: 0, failed: 0, aborted: 0 })
+const noShares = (): Shares => ({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0 })
+
+const emptyOverview = (): Overview => ({
+  cost: '≈ $0.00', tokens: '0', time: '0:00', shares: noShares(),
+  amounts: { input: '0', output: '0', cacheRead: '0', cacheWrite: '0' }, line: '', unpriced: '',
+})
+
+export function sharesOf(t: TokenCounts): Shares {
+  const total = tokenSum(t)
+  if (total === 0) return noShares()
+  return { input: t.input / total, output: t.output / total, cacheRead: t.cacheRead / total, cacheWrite: (t.cacheWrite5m + t.cacheWrite1h) / total }
+}
+
+const addTokens = (agents: AgentSummary[]): TokenCounts => agents.reduce<TokenCounts>((n, a) => ({
+  input: n.input + a.tokens.input,
+  output: n.output + a.tokens.output,
+  cacheRead: n.cacheRead + a.tokens.cacheRead,
+  cacheWrite5m: n.cacheWrite5m + a.tokens.cacheWrite5m,
+  cacheWrite1h: n.cacheWrite1h + a.tokens.cacheWrite1h,
+}), { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 })
+
 function modelName(id: string): string {
-  const m = /(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2})(?!\d))?/i.exec(id)
+  // Claude 3.x ids put the version before the family and a date after it: claude-3-5-haiku-20241022.
+  const old = /-(\d)(?:-(\d))?-(opus|sonnet|haiku)/i.exec(id)
+  const m = old ? [old[0], old[3], old[1], old[2]] : /(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2})(?!\d))?/i.exec(id)
   if (!m) return id || '—'
   const family = (m[1] as string).toLowerCase()
   return `${family[0]?.toUpperCase()}${family.slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ''}`
@@ -75,10 +118,27 @@ function noteOf(a: AgentSummary, glyph: Glyph): string {
   return glyph === '⊘' ? 'abgebrochen' : ''
 }
 
+// The host refuses a whole tree for one control character in a text, and a line break would split a row.
+function tidy(value: unknown): string {
+  // A number reads as its digits; null, a boolean or an object has no text worth showing.
+  const text = typeof value === 'string' ? value : typeof value === 'number' ? String(value) : ''
+  // A prefix fills the cap twice over, so a megabyte text costs no more per render than a long one.
+  // Its cut can leave half a surrogate pair, which the \p{Cs} here turns into a blank like any lone one.
+  const flat = text.slice(0, MAX_TEXT * 4).replace(/[\s\p{Cc}\p{Cs}]+/gu, ' ').trim()
+  const chars = [...flat]
+  return chars.length > MAX_TEXT ? `${chars.slice(0, MAX_TEXT - 1).join('')}…` : flat
+}
+
+const tidyAgent = (a: AgentSummary): AgentSummary =>
+  ({ ...a, name: tidy(a.name), role: tidy(a.role), task: tidy(a.task), model: tidy(a.model), effort: tidy(a.effort), errorText: tidy(a.errorText) })
+
 export function buildView(input: ViewInput): View {
-  const notices = input.error ? [`⚠ ${input.error}`] : []
-  const s = input.summary
-  if (!s) return { title: 'Agents', totals: input.error ? '' : 'lade …', counts: '', notices, groups: [] }
+  // Every text the summary or the script brings in is cleaned here, so nothing below needs to be.
+  const error = tidy(input.error)
+  const notices = error ? [`⚠ ${error}`] : []
+  const raw = input.summary
+  const s = raw && { ...raw, runId: raw.runId === null ? null : tidy(raw.runId), agents: raw.agents.map(tidyAgent), problems: raw.problems.map(tidy) }
+  if (!s) return { title: 'Agents', totals: error ? '' : 'lade …', counts: '', notices, groups: [], status: noCounts(), overview: emptyOverview() }
   if (s.unreadableLines > 0) notices.push(`⚠ ${s.unreadableLines} Zeilen unlesbar`)
   for (const p of s.problems) notices.push(`⚠ ${p}`)
 
@@ -94,46 +154,64 @@ export function buildView(input: ViewInput): View {
     const ended = endOf(a, glyph, input.now)
     const isCurrentLead = a.kind === 'lead' && a.sessionId === current
     const reported = isCurrentLead && input.reportedCostUsd !== null ? `gemeldet ${fmtCost(input.reportedCostUsd)}` : ''
+    const time = fmtTime(a.firstAt === null ? 0 : (ended as number) - a.firstAt)
     return {
       key: a.id,
       glyph,
+      status: STATUS_OF[glyph],
       label,
       model: modelName(a.model),
+      effort: a.effort,
       cost: a.unpriced ? '?' : fmtCost(a.costUsd),
       tokens: fmtTokens(tokenSum(a.tokens)),
-      time: fmtTime(a.firstAt === null ? 0 : (ended as number) - a.firstAt),
+      time,
       note: reported || noteOf(a, glyph),
       // Cache reads dwarf the rest, so the total alone says little.
       detail: `in ${fmtTokens(a.tokens.input)} · out ${fmtTokens(a.tokens.output)} · read ${fmtTokens(a.tokens.cacheRead)} · write ${fmtTokens(a.tokens.cacheWrite5m)}/${fmtTokens(a.tokens.cacheWrite1h)}`,
+      shares: sharesOf(a.tokens),
+      // A failed or aborted row shows why instead of what it cost.
+      meta: [modelName(a.model), a.effort, ...(glyph === '✗' || glyph === '⊘' ? [noteOf(a, glyph)] : [a.unpriced ? '?' : fmtCost(a.costUsd), `⏱ ${time}`, reported])]
+        .filter((p) => p !== '').join(' · '),
     }
   }
 
   const buckets = new Map<string, AgentSummary[]>()
   for (const a of s.agents) {
-    const key = a.kind === 'lead' ? 'lead' : isTeam ? a.role : 'agents'
+    // A role may itself be named like the lead or the plain bucket, so it gets a key of its own.
+    const key = a.kind === 'lead' ? 'lead' : !isTeam ? 'agents' : a.role === 'lead' || a.role === 'agents' ? `role-${a.role}` : a.role
     buckets.set(key, [...(buckets.get(key) ?? []), a])
   }
   const groups: Group[] = [...buckets].map(([key, members]) => {
+    const role = key === 'lead' || key === 'agents' ? key : (members[0] as AgentSummary).role
     // Leads stay in generation order; agents put the running ones first, then go by start.
     const sorted = key === 'lead'
       ? members
       : [...members].sort((x, y) =>
           Number(glyphs.get(y) === '●') - Number(glyphs.get(x) === '●') || (x.firstAt ?? 0) - (y.firstAt ?? 0))
     const costUsd = members.reduce((n, a) => n + a.costUsd, 0)
+    const counts = noCounts()
+    for (const a of members) counts[STATUS_OF[glyphs.get(a) as Glyph]] += 1
     return {
       key,
-      title: key === 'lead' ? (isTeam ? 'Lead (Orchestrator)' : 'Lead') : key === 'agents' ? 'Agents' : key,
+      role,
+      title: key === 'lead' ? (isTeam ? 'Lead (Orchestrator)' : 'Lead') : key === 'agents' ? 'Agents' : role,
       cost: fmtCost(costUsd),
       tokens: fmtTokens(members.reduce((n, a) => n + tokenSum(a.tokens), 0)),
       time: fmtTime(wallClock(members, glyphs, s.generations, input.now)),
       costUsd,
+      costShare: 0,
       isRunning: members.some((a) => glyphs.get(a) === '●'),
+      counts,
       rows: sorted.map(rowOf),
     }
   })
-  groups.sort((x, y) => Number(y.isRunning) - Number(x.isRunning) || y.costUsd - x.costUsd)
+  // Role cards go running first, then by cost; a plain session is just the lead, then its agents.
+  groups.sort((x, y) => isTeam
+    ? Number(y.isRunning) - Number(x.isRunning) || y.costUsd - x.costUsd
+    : Number(y.key === 'lead') - Number(x.key === 'lead'))
 
   const total = s.agents.reduce((n, a) => n + a.costUsd, 0)
+  for (const g of groups) g.costShare = total > 0 ? g.costUsd / total : 0
   const unpriced = s.agents.filter((a) => a.unpriced).length
   const wall = wallClock(s.agents, glyphs, s.generations, input.now)
   const tokens = s.agents.reduce((n, a) => n + tokenSum(a.tokens), 0)
@@ -151,6 +229,19 @@ export function buildView(input: ViewInput): View {
   const count = (g: Glyph) => agentGlyphs.filter((x) => x === g).length
   const counts = [`● ${count('●')}`, `✓ ${count('✓')}`, `✗ ${count('✗')}`, ...(count('⊘') ? [`⊘ ${count('⊘')}`] : [])].join('  ')
 
+  const status = noCounts()
+  for (const a of s.agents) if (a.kind === 'agent') status[STATUS_OF[glyphs.get(a) as Glyph]] += 1
+  const sum = addTokens(s.agents)
+  const overview: Overview = {
+    cost: `≈ ${fmtCost(total)}`,
+    tokens: fmtTokens(tokens),
+    time: fmtTime(wall),
+    shares: sharesOf(sum),
+    amounts: { input: fmtTokens(sum.input), output: fmtTokens(sum.output), cacheRead: fmtTokens(sum.cacheRead), cacheWrite: fmtTokens(sum.cacheWrite5m + sum.cacheWrite1h) },
+    line: `≈ ${fmtCost(total)} · ${fmtTokens(tokens)} · ${fmtTime(wall)}${unpriced ? ` · ohne ${unpriced} Agents` : ''}`,
+    unpriced: unpriced ? `ohne ${unpriced} Agents` : '',
+  }
+
   const gens = s.generations.length
   return {
     title: isTeam ? `Lauf ${s.runId}${gens > 1 ? ` (Gen 1–${gens})` : ''}` : 'Diese Sitzung',
@@ -158,7 +249,29 @@ export function buildView(input: ViewInput): View {
     counts,
     notices,
     groups,
+    status,
+    overview,
   }
+}
+
+export const statusLine = (c: StatusCounts): string =>
+  `● läuft ${c.running}   ✓ fertig ${c.done}   ✗ gescheitert ${c.failed}   ⊘ abgebrochen ${c.aborted}`
+
+export const countsLine = (c: StatusCounts): string =>
+  [`● ${c.running}`, `✓ ${c.done}`, ...(c.failed ? [`✗ ${c.failed}`] : []), ...(c.aborted ? [`⊘ ${c.aborted}`] : [])].join('  ')
+
+// The host draws a terminal pane only up to 100 000 characters of text; this many rows of a card stay
+// below that at every width, so the card names the rest instead of losing them silently.
+// ponytail: a cap per card, not per pane; many big cards together can still pass the limit.
+const MAX_ROWS = 150
+
+const rowsOf = (g: Group, hideDone: boolean): Row[] => (hideDone ? g.rows.filter((r) => r.status !== 'done') : g.rows)
+
+export const visibleRows = (g: Group, hideDone: boolean): Row[] => rowsOf(g, hideDone).slice(0, MAX_ROWS)
+
+export function moreLine(g: Group, hideDone: boolean): string {
+  const rest = rowsOf(g, hideDone).length - MAX_ROWS
+  return rest > 0 ? `… ${rest} weitere Agents` : ''
 }
 
 export const groupLine = (g: Group, isCollapsed: boolean): string =>
@@ -171,11 +284,54 @@ export const detailLine = (r: Row): string => `      ${r.detail}`
 
 export const glyphColor = (g: Glyph): string => COLORS[g]
 
+type Json = Record<string, unknown>
+const isRecord = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v)
+const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string')
+const finite = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+const text = (v: unknown): string => (typeof v === 'string' ? v : '')
+
+function agentOf(v: unknown): AgentSummary | null {
+  if (!isRecord(v) || typeof v.id !== 'string' || typeof v.sessionId !== 'string' || (v.kind !== 'lead' && v.kind !== 'agent')) return null
+  const t = isRecord(v.tokens) ? v.tokens : {}
+  const cost = finite(v.costUsd)
+  const firstAt = finite(v.firstAt)
+  const lastAt = finite(v.lastAt)
+  const isTimed = firstAt !== null && lastAt !== null
+  return {
+    id: v.id,
+    sessionId: v.sessionId,
+    kind: v.kind,
+    name: text(v.name),
+    role: text(v.role),
+    task: text(v.task),
+    model: text(v.model),
+    effort: text(v.effort),
+    // JSON.stringify turns a non-finite count into null; zero keeps the sums finite.
+    tokens: { input: finite(t.input) ?? 0, output: finite(t.output) ?? 0, cacheRead: finite(t.cacheRead) ?? 0, cacheWrite5m: finite(t.cacheWrite5m) ?? 0, cacheWrite1h: finite(t.cacheWrite1h) ?? 0 },
+    // A cost that is not a number is no price: it counts as unpriced, never as a made-up one.
+    costUsd: cost ?? 0,
+    unpriced: v.unpriced === true || cost === null,
+    firstAt: isTimed ? firstAt : null,
+    lastAt: isTimed ? lastAt : null,
+    end: v.end === 'answered' || v.end === 'error' ? v.end : 'open',
+    errorText: text(v.errorText),
+  }
+}
+
+// The one place untrusted JSON enters the view: what passes here has the types and fields buildView reads.
+function summaryOf(data: unknown): Summary | null {
+  if (!isRecord(data) || !isStrings(data.generations) || !isStrings(data.problems) || !Array.isArray(data.agents)) return null
+  if (data.runId !== null && typeof data.runId !== 'string') return null
+  const agents = data.agents.map(agentOf)
+  if (agents.some((a) => a === null)) return null
+  return { runId: data.runId, generations: data.generations, agents: agents as AgentSummary[], unreadableLines: finite(data.unreadableLines) ?? 0, problems: data.problems }
+}
+
 export function parseResult(r: { exitCode: number; stdout: string; stderr: string }): { summary: Summary | null; error: string } {
-  if (r.exitCode !== 0) return { summary: null, error: `summarize exit ${r.exitCode}: ${r.stderr.trim().slice(0, 200)}` }
+  if (r.exitCode !== 0) return { summary: null, error: `summarize exit ${r.exitCode}: ${r.stderr.trim()}` }
   try {
-    const data = JSON.parse(r.stdout) as Partial<Summary>
-    return Array.isArray(data.agents) ? { summary: data as Summary, error: '' } : { summary: null, error: 'summarize: unerwartete Ausgabe' }
+    const summary = summaryOf(JSON.parse(r.stdout))
+    return summary ? { summary, error: '' } : { summary: null, error: 'summarize: unerwartete Ausgabe' }
   } catch {
     return { summary: null, error: 'summarize: Ausgabe ist kein JSON' }
   }
@@ -200,14 +356,21 @@ export function reportedCost(cost: unknown): number | null {
   return null
 }
 
-export function scriptArgs(script: string, session: string, cwd: string, home: string, tmp: string): string[] {
-  return ['node', script, '--session', session, '--cwd', cwd, '--home', home, '--cache', `${tmp}/agent-panel/${session}.json`]
+export function scriptArgs(script: string, session: string, cwd: string, config: string, tmp: string): string[] {
+  return ['node', script, '--session', session, '--cwd', cwd, '--config', config, '--cache', `${tmp}/agent-panel/${session}.json`]
 }
 
-export type DirEnv = { USERPROFILE?: string | undefined; HOME?: string | undefined; TEMP?: string | undefined; TMPDIR?: string | undefined }
+export type DirEnv = {
+  USERPROFILE?: string | undefined
+  HOME?: string | undefined
+  TEMP?: string | undefined
+  TMPDIR?: string | undefined
+  CLAUDE_CONFIG_DIR?: string | undefined
+}
 
-export const dirsOf = (env: DirEnv): { home: string; tmp: string } => ({
-  home: env.USERPROFILE ?? env.HOME ?? '',
+// Claude Code keeps its transcripts under CLAUDE_CONFIG_DIR when set, as a second account does.
+export const dirsOf = (env: DirEnv): { config: string; tmp: string } => ({
+  config: env.CLAUDE_CONFIG_DIR || `${env.USERPROFILE ?? env.HOME ?? ''}/.claude`,
   tmp: env.TEMP ?? env.TMPDIR ?? '/tmp',
 })
 
@@ -216,4 +379,6 @@ export function toggle(set: Set<string>, key: string): void {
   else set.add(key)
 }
 
-export const isOpen = (panes: readonly { id: string }[], id: string): boolean => panes.some((p) => p.id === id)
+// A pane opened unasked on a narrow terminal is listed but waits undrawn (isPlaced false).
+export const isOpen = (panes: readonly { id: string; isPlaced?: boolean }[], id: string): boolean =>
+  panes.some((p) => p.id === id && p.isPlaced !== false)

@@ -113,7 +113,7 @@ Node kann; `hooks/` läuft im Mod und darf nur `$`.
 
 | Datei | Aufgabe | Hängt ab von |
 |---|---|---|
-| `cli/summarize.ts` | Einstieg: `node summarize.ts --session <id> --cwd <dir> --home <dir> --cache <datei>`; druckt die Zusammenfassung als eine JSON-Zeile auf stdout, Exit 0 auch bei Lesefehlern (sie stehen in der Zusammenfassung). | die übrigen in `cli/` |
+| `cli/summarize.ts` | Einstieg: `node summarize.ts --session <id> --cwd <dir> --config <dir> --cache <datei>` (`--config`: `CLAUDE_CONFIG_DIR`, sonst `~/.claude`); druckt die Zusammenfassung als eine JSON-Zeile auf stdout, Exit 0 auch bei Lesefehlern (sie stehen in der Zusammenfassung). | die übrigen in `cli/` |
 | `cli/scan.ts` | Sitzungen der laufenden Sitzung bestimmen: die eigene ID; führt ein `<cwd>/.team-runs/*/run.json` sie in `sessions`, alle Sitzungen dieses Laufs. Dateien je Sitzung über die ID unter `<home>/.claude/projects/*/` finden. | `node:fs` |
 | `cli/transcript.ts` | Eine `.jsonl` ab gemerktem Byte-Offset lesen: Tokens je Art und Modell, erste/letzte Zeit, Endzustand, unlesbare Zeilen. | `node:fs` |
 | `cli/cache.ts` | Offsets und Teilsummen je Datei in der Cache-Datei laden und speichern. | `node:fs` |
@@ -124,7 +124,16 @@ Node kann; `hooks/` läuft im Mod und darf nur `$`.
 
 **Cache-Datei:** `<tmp>/agent-panel/<session-id>.json`, nicht unter dem
 Plugin-Verzeichnis, das ein Update ersetzt. Fehlt oder ist sie unlesbar, liest
-das Skript von vorn.
+das Skript von vorn. Der Ordner wird mit Modus 0700 angelegt; einen
+vorhandenen nutzt das Skript nur, wenn er ein echter Ordner (kein Link) ist und
+— unter POSIX — dem aktuellen Nutzer gehört und Gruppe und Andere nicht darin
+schreiben dürfen. Sonst — auch wenn an der Stelle eine Datei oder ein ins Leere
+zeigender Link liegt — liest und schreibt es keinen Cache und fasst trotzdem
+zusammen. Geschrieben wird über eine Temp-Datei mit zufälligem Namen, die
+exklusiv (`wx`, Modus 0600) angelegt und dann umbenannt wird. Scheitert das
+Anlegen des Ordners aus einem anderen Grund als dem Hindernis an der Stelle
+(etwa Zugriff verweigert) oder das Schreiben, bleibt die Zusammenfassung und
+erhält eine Problemzeile „Cache nicht gespeichert“.
 
 **Voraussetzung:** `node` ≥ 22.18 (führt TypeScript ohne Flag aus) im PATH des
 Claude-Code-Prozesses. Scheitert der Start, zeigt das Panel „node nicht
@@ -169,7 +178,12 @@ Agents · Lauf 20261009-113117 (Gen 1–2)
   steht in einer Detailzeile, die ein Druck auf die Agent-Zeile auf- und
   zuklappt, auf beiden Oberflächen gleich (`in 68 · out 3.5k · read 1.4M ·
   write 163k/0`, Cache-Write als 5m/1h).
-- **Kosten** = Σ Token-Art × Preis des Modells der jeweiligen Nachricht.
+- **Kosten** = Σ Token-Art × Preis des Modells der jeweiligen Nachricht. Ruft
+  eine Nachricht den Advisor, enthält ihre oberste `usage` nur die eigenen
+  Durchläufe; alle stehen in `usage.iterations`, der Advisor mit eigenem
+  `model`. Dann zählt jeder Durchlauf mit seinen Tokens zum Preis seines
+  Modells. Die gemerkte Nachricht der Cache-Datei trägt dafür ihre Kosten
+  (Cache-Version 3).
 - **Dauer je Agent** = erste bis letzte Nachricht; läuft er, bis jetzt.
 - **Zeit im Kopf** = Summe über die Generationen; je Generation die Wanduhr
   vom frühesten Start bis zum spätesten Ende (oder jetzt) ihres Leads und

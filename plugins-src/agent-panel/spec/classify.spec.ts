@@ -1,6 +1,12 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { roleOf, taskOf } from '../cli/classify.ts'
+import { parseMeta, roleOf, taskOf } from '../cli/classify.ts'
+
+test('keeps only the string fields of a meta file', () => {
+  assert.deepEqual(parseMeta({ name: 'a', description: 'b', agentType: 'c', customAgentType: 'd', other: 'e' }), { name: 'a', description: 'b', agentType: 'c', customAgentType: 'd' })
+  assert.deepEqual(parseMeta({ name: 5, description: [], agentType: { toString: 0 }, customAgentType: true }), {})
+  for (const raw of [null, 5, 's', [], undefined]) assert.deepEqual(parseMeta(raw), {}, String(raw))
+})
 
 test('takes the role from the custom agent type, without a plugin prefix', () => {
   assert.equal(roleOf({ customAgentType: 'implementer-backend', agentType: 'fix-B1' }), 'implementer-backend')

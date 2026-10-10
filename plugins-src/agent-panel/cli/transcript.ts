@@ -2,22 +2,27 @@ import { closeSync, fstatSync, openSync, readSync, statSync } from 'node:fs'
 import { costOf } from './price.ts'
 import type { EndState, TokenCounts } from '../shared/summary.ts'
 
+// A transcript line is untrusted JSON, so every count is unknown until count() has checked it.
 type Usage = {
-  input_tokens?: number
-  output_tokens?: number
-  cache_read_input_tokens?: number
-  cache_creation_input_tokens?: number
-  cache_creation?: { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number }
+  input_tokens?: unknown
+  output_tokens?: unknown
+  cache_read_input_tokens?: unknown
+  cache_creation_input_tokens?: unknown
+  cache_creation?: { ephemeral_5m_input_tokens?: unknown; ephemeral_1h_input_tokens?: unknown }
+  /** The turns of one message, an advisor call among them with a model of its own. */
+  iterations?: unknown
 }
 
 type Line = {
   type?: string
-  timestamp?: string
+  timestamp?: unknown
+  effort?: unknown
   isApiErrorMessage?: boolean
-  message?: { id?: string; model?: string; stop_reason?: string | null; usage?: Usage; content?: unknown }
+  message?: { id?: string; model?: unknown; stop_reason?: string | null; usage?: Usage; content?: unknown }
 }
 
-type Pending = { id: string; model: string; tokens: TokenCounts }
+/** Cost is null when a model of the message has no price. */
+type Pending = { id: string; model: string; tokens: TokenCounts; cost: number | null }
 
 export type FileState = {
   /** Bytes consumed, always just after a newline. */
@@ -28,6 +33,7 @@ export type FileState = {
   /** The newest message: later lines with its id replace it, a new id settles it into done. */
   pending: Pending | null
   model: string
+  effort: string
   firstAt: number | null
   lastAt: number | null
   hasAnswer: boolean
@@ -46,23 +52,44 @@ const add = (a: TokenCounts, b: TokenCounts): TokenCounts => ({
 })
 
 export function emptyState(): FileState {
-  return { offset: 0, done: zero(), doneCost: 0, unpriced: false, pending: null, model: '', firstAt: null, lastAt: null, hasAnswer: false, errorText: '', unreadable: 0 }
+  return { offset: 0, done: zero(), doneCost: 0, unpriced: false, pending: null, model: '', effort: '', firstAt: null, lastAt: null, hasAnswer: false, errorText: '', unreadable: 0 }
 }
+
+// Anything but a safe non-negative integer counts as 0: a wild value would put Infinity or text into the sums.
+const count = (v: unknown): number => (typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : 0)
 
 function tokensOf(u: Usage): TokenCounts {
   const c = u.cache_creation
   return {
-    input: u.input_tokens ?? 0,
-    output: u.output_tokens ?? 0,
-    cacheRead: u.cache_read_input_tokens ?? 0,
-    cacheWrite5m: c ? (c.ephemeral_5m_input_tokens ?? 0) : (u.cache_creation_input_tokens ?? 0),
-    cacheWrite1h: c ? (c.ephemeral_1h_input_tokens ?? 0) : 0,
+    input: count(u.input_tokens),
+    output: count(u.output_tokens),
+    cacheRead: count(u.cache_read_input_tokens),
+    cacheWrite5m: count(c ? c.ephemeral_5m_input_tokens : u.cache_creation_input_tokens),
+    cacheWrite1h: count(c ? c.ephemeral_1h_input_tokens : 0),
+  }
+}
+
+// With an advisor call the top-level usage holds only the executor's turns, and its cache split only
+// the first one; the iterations hold every turn, each billed at its own model.
+function pendingOf(id: string, model: string, u: Usage): Pending {
+  const turns = Array.isArray(u.iterations)
+    ? u.iterations.filter((t): t is Usage & { model?: unknown } => typeof t === 'object' && t !== null)
+    : []
+  const parts = turns.length > 0
+    ? turns.map((t) => ({ model: typeof t.model === 'string' ? t.model : model, tokens: tokensOf(t) }))
+    : [{ model, tokens: tokensOf(u) }]
+  const costs = parts.map((p) => costOf(p.model, p.tokens))
+  return {
+    id,
+    model,
+    tokens: parts.reduce((n, p) => add(n, p.tokens), zero()),
+    cost: costs.some((c) => c === null) ? null : costs.reduce((n: number, c) => n + (c as number), 0),
   }
 }
 
 function settle(s: FileState): FileState {
   if (!s.pending) return s
-  const cost = costOf(s.pending.model, s.pending.tokens)
+  const { cost } = s.pending
   return { ...s, done: add(s.done, s.pending.tokens), doneCost: s.doneCost + (cost ?? 0), unpriced: s.unpriced || cost === null, pending: null }
 }
 
@@ -76,27 +103,36 @@ function applyAssistant(s: FileState, line: Line): FileState {
   const msg = line.message ?? {}
   if (line.isApiErrorMessage) return { ...s, errorText: firstText(msg.content) }
   const hasAnswer = s.hasAnswer || msg.stop_reason === 'end_turn'
-  const model = msg.model ?? ''
+  const model = typeof msg.model === 'string' ? msg.model : ''
   if (!msg.usage || model === '<synthetic>') return { ...s, hasAnswer, errorText: '' }
   const id = msg.id ?? ''
-  const next: Pending = { id, model, tokens: tokensOf(msg.usage) }
+  const next = pendingOf(id, model, msg.usage)
   const base = s.pending && id !== '' && s.pending.id === id ? s : settle(s)
   return { ...base, pending: next, model, hasAnswer, errorText: '' }
+}
+
+/** Null for a line that is not JSON, or JSON that is not an object. */
+function parseLine(raw: string): Line | null {
+  try {
+    const value: unknown = JSON.parse(raw)
+    return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Line) : null
+  } catch {
+    return null
+  }
 }
 
 export function applyLines(prev: FileState, text: string): FileState {
   let s = prev
   for (const raw of text.split('\n')) {
     if (raw.trim() === '') continue
-    let line: Line
-    try {
-      line = JSON.parse(raw) as Line
-    } catch {
+    const line = parseLine(raw)
+    if (!line) {
       s = { ...s, unreadable: s.unreadable + 1 }
       continue
     }
-    const at = Date.parse(line.timestamp ?? '')
+    const at = typeof line.timestamp === 'string' ? Date.parse(line.timestamp) : Number.NaN
     if (!Number.isNaN(at)) s = { ...s, firstAt: s.firstAt ?? at, lastAt: at }
+    if (typeof line.effort === 'string' && line.effort !== '') s = { ...s, effort: line.effort }
     if (line.type === 'assistant') s = applyAssistant(s, line)
   }
   return s
@@ -124,7 +160,7 @@ export function readTranscript(path: string, prev: FileState): FileState {
 
 export function totals(s: FileState): { tokens: TokenCounts; costUsd: number; unpriced: boolean } {
   if (!s.pending) return { tokens: s.done, costUsd: s.doneCost, unpriced: s.unpriced }
-  const cost = costOf(s.pending.model, s.pending.tokens)
+  const { cost } = s.pending
   return { tokens: add(s.done, s.pending.tokens), costUsd: s.doneCost + (cost ?? 0), unpriced: s.unpriced || cost === null }
 }
 

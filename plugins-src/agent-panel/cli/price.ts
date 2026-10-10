@@ -35,14 +35,20 @@ const RATES: Record<string, Rates> = {
 const HAIKU_5_5_LONG: Rates = [0.5, 2.5, 0.05, 0.625, 1]
 const HAIKU_LONG_PROMPT = 100_000
 
+// 3.x ids put the version before the family (claude-3-5-haiku-20241022); the keys put it after.
 export function modelKey(model: string): string {
-  return model.toLowerCase().replace(/\[.*\]$/, '').replace(/^claude-/, '').replace(/-\d{8}$/, '')
+  const lower = model.toLowerCase()
+  // A context suffix like [1m] runs from the first bracket to the end; a regex for it went quadratic on many brackets.
+  const open = lower.indexOf('[')
+  const bare = open >= 0 && lower.endsWith(']') ? lower.slice(0, open) : lower
+  return bare.replace(/^claude-/, '')
+    .replace(/^(\d+(?:-\d+)?)-(haiku|sonnet|opus)/, '$2-$1').replace(/-(\d{8}|latest)$/, '')
 }
 
 export function costOf(model: string, t: TokenCounts): number | null {
   const key = modelKey(model)
-  const base = RATES[key]
-  if (!base) return null
+  if (!Object.hasOwn(RATES, key)) return null
+  const base = RATES[key]!
   const prompt = t.input + t.cacheRead + t.cacheWrite5m + t.cacheWrite1h
   const r = key === 'haiku-5-5' && prompt > HAIKU_LONG_PROMPT ? HAIKU_5_5_LONG : base
   const micro = t.input * r[0] + t.output * r[1] + t.cacheRead * r[2] + t.cacheWrite5m * r[3] + t.cacheWrite1h * r[4]

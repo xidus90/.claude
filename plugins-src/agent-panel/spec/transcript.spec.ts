@@ -84,6 +84,14 @@ test('counts unreadable lines and reads on', () => {
   assert.equal(totals(s).tokens.output, 20)
 })
 
+test('counts a line that is valid JSON but not an object as unreadable', () => {
+  for (const raw of ['null', '42', '"text"', 'true', '[]', '[{"type":"assistant"}]']) {
+    const s = read(raw + '\n' + assistant({ id: 'a' }))
+    assert.equal(s.unreadable, 1, raw)
+    assert.equal(totals(s).tokens.output, 20, raw)
+  }
+})
+
 test('reads only new bytes, and leaves a half-written last line for later', () => {
   const dir = tempDir()
   const file = join(dir, 't.jsonl')
@@ -149,4 +157,107 @@ test('matches the independent tally of a real teammate transcript', () => {
   assert.equal(s.firstAt, 1791548983015)
   assert.equal(s.lastAt, 1791549963815)
   assert.equal(endOf(s), 'answered')
+})
+
+test('remembers the last effort a line names', () => {
+  const lines = [
+    JSON.stringify({ type: 'user', effort: 'low', timestamp: '2026-10-09T10:00:00.000Z' }),
+    JSON.stringify({ type: 'assistant', effort: 'medium', message: { id: 'a', model: 'claude-opus-5-5', stop_reason: 'end_turn', usage: { output_tokens: 1 } } }),
+    JSON.stringify({ type: 'system' }),
+    JSON.stringify({ type: 'user', effort: '' }),
+  ].join('\n') + '\n'
+  assert.equal(applyLines(emptyState(), lines).effort, 'medium')
+  assert.equal(emptyState().effort, '')
+})
+
+const rawModel = (id: string, model: unknown) =>
+  JSON.stringify({ type: 'assistant', message: { id, model, stop_reason: 'end_turn', usage: { output_tokens: 20 } } }) + '\n'
+
+test('treats a model that is not a string as unpriced, on the newest line', () => {
+  const s = read(assistant({ id: 'a' }) + rawModel('b', 5))
+  const t = totals(s)
+  assert.equal(t.tokens.output, 40)
+  assert.equal(t.unpriced, true)
+  assert.equal(s.model, '')
+})
+
+test('treats a model that is not a string as unpriced, once a later message settles it', () => {
+  const s = read(rawModel('a', { name: 'opus' }) + assistant({ id: 'b' }))
+  const t = totals(s)
+  assert.equal(t.tokens.output, 40)
+  assert.equal(t.unpriced, true)
+  assert.equal(s.model, 'claude-opus-5-5')
+})
+
+test('flags a prototype-named model as unpriced and keeps the cost finite', () => {
+  const t = totals(read(assistant({ id: 'a', model: 'constructor' }) + assistant({ id: 'b', model: 'claude-opus-5-5', usage: { output_tokens: 1_000_000 } })))
+  assert.equal(t.unpriced, true)
+  assert.equal(t.costUsd, 20)
+})
+
+// JSON text, not values: 1e999 and the odd shapes must reach the parser as written.
+const BAD_COUNTS = ['1e999', '-1e999', '1e308', '9007199254740992', '"7"', '"NaN"', '-5', '1.5', 'null', 'true', '[5]', '{}', '{"toString":0}', '{"valueOf":0,"toString":0}']
+const withCount = (usage: Record<string, unknown>, count: string) => assistant({ id: 'm1', usage }).replaceAll('"@@"', count)
+
+test('counts a token count that is not a safe non-negative integer as 0, in every field', () => {
+  const flat = { input_tokens: '@@', output_tokens: '@@', cache_read_input_tokens: '@@', cache_creation_input_tokens: '@@' }
+  const split = { cache_creation: { ephemeral_5m_input_tokens: '@@', ephemeral_1h_input_tokens: '@@' } }
+  for (const bad of BAD_COUNTS) {
+    for (const usage of [flat, split]) {
+      assert.deepEqual(totals(read(withCount(usage, bad))).tokens, { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 }, bad)
+    }
+  }
+})
+
+test('prices a message from its valid counts when another one is dropped', () => {
+  for (const bad of BAD_COUNTS) {
+    const t = totals(read(withCount({ input_tokens: '@@', output_tokens: 1_000_000 }, bad)))
+    assert.equal(t.costUsd, 20, bad)
+    assert.equal(t.unpriced, false, bad)
+    assert.equal(t.tokens.output, 1_000_000, bad)
+  }
+})
+
+test('keeps a dropped count out of the totals once a later message settles it', () => {
+  const s = read(withCount({ input_tokens: '@@', output_tokens: 5 }, '{"toString":0}') + assistant({ id: 'm2' }))
+  assert.deepEqual(totals(s).tokens, { input: 10, output: 25, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 })
+})
+
+test('accepts the largest safe count and keeps the cost finite', () => {
+  const t = totals(read(withCount({ input_tokens: '@@' }, String(Number.MAX_SAFE_INTEGER))))
+  assert.equal(t.tokens.input, Number.MAX_SAFE_INTEGER)
+  assert.ok(Number.isFinite(t.costUsd))
+})
+
+test('a timestamp that is not a string counts as missing instead of throwing', () => {
+  const s = read(JSON.stringify({ type: 'user', timestamp: { toString: 0 } }) + '\n' + JSON.stringify({ type: 'user', timestamp: { valueOf: 0, toString: 0 } }) + '\n')
+  assert.equal(s.firstAt, null)
+})
+
+// A message with an advisor call, as Claude Code writes it: the top-level usage holds only the executor's turns.
+const ADVISED = {
+  input_tokens: 4, output_tokens: 527, cache_read_input_tokens: 184497, cache_creation_input_tokens: 2337,
+  cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 1001 },
+  iterations: [
+    { type: 'message', input_tokens: 2, output_tokens: 250, cache_read_input_tokens: 91748, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 1001 } },
+    { type: 'advisor_message', model: 'claude-fable-5-1', input_tokens: 96234, output_tokens: 4404, cache_read_input_tokens: 0, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 0 } },
+    { type: 'message', input_tokens: 2, output_tokens: 277, cache_read_input_tokens: 92749, cache_creation: { ephemeral_5m_input_tokens: 1336, ephemeral_1h_input_tokens: 0 } },
+  ],
+}
+
+test('prices every iteration of a message by its own model, the advisor call included', () => {
+  const t = totals(read(assistant({ id: 'm1', model: 'claude-opus-5-5', usage: ADVISED })))
+  assert.deepEqual(t.tokens, { input: 96238, output: 4931, cacheRead: 184497, cacheWrite5m: 1336, cacheWrite1h: 1001 })
+  // Opus 5.5 for the two executor turns, Fable 5.1 for the advisor.
+  const opus = (4 * 4 + 527 * 20 + 184497 * 0.2 + 1336 * 5 + 1001 * 8) / 1e6
+  const fable = (96234 * 10 + 4404 * 50) / 1e6
+  assert.ok(Math.abs(t.costUsd - (opus + fable)) < 1e-9, String(t.costUsd))
+  assert.equal(t.unpriced, false)
+})
+
+test('an iteration of an unknown model leaves the message unpriced, and a bad iteration list is ignored', () => {
+  const unknown = { ...ADVISED, iterations: [{ type: 'advisor_message', model: 'claude-x-9', input_tokens: 5 }, null, 'x'] }
+  assert.equal(totals(read(assistant({ id: 'm1', model: 'claude-opus-5-5', usage: unknown }))).unpriced, true)
+  const notList = { input_tokens: 1, output_tokens: 2, iterations: 'many' }
+  assert.deepEqual(totals(read(assistant({ id: 'm1', model: 'claude-opus-5-5', usage: notList }))).tokens, { input: 1, output: 2, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 })
 })
