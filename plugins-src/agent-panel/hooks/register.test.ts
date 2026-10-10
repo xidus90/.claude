@@ -363,6 +363,36 @@ test('a denied pane listing does not reopen the pane on every spawn of a swarm',
   expect(opened).toEqual(['agent-panel'])
 })
 
+test('a denied pane listing still reopens the pane for a new team run after it was closed', async ($, on) => {
+  const clock = mock.clock(on)
+  const opened: string[] = []
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), opened, [], [], '', () => true)
+  on('config.list', () => ({ value: [] }))
+  on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }))
+  await $.session.start(START)
+  await $.agent.spawn({ subagentType: 'implementer-backend', description: 'x', prompt: 'x', isTeammate: true })
+  await $.command.run(TOGGLE)
+  await clock.advance(11 * 60_000)
+  await $.agent.spawn({ subagentType: 'implementer-backend', description: 'x', prompt: 'x', isTeammate: true })
+  expect(opened).toEqual(['agent-panel', 'agent-panel'])
+})
+
+test('a denied pane listing stops the summary once the pane was closed', async ($, on) => {
+  const clock = mock.clock(on)
+  const runs: string[][] = []
+  stub(on, runs, () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [], '', () => true)
+  on('config.list', () => ({ value: [] }))
+  on('agent.spawn', () => ({ agentId: 'a1', model: 'claude-sonnet-5-5' }))
+  await $.session.start(START)
+  await $.agent.spawn({ subagentType: 'implementer-backend', description: 'x', prompt: 'x', isTeammate: true })
+  await clock.advance(2000)
+  expect(runs.length).toBeGreaterThan(0)
+  await $.command.run(TOGGLE)
+  const before = runs.length
+  await clock.advance(10_000)
+  expect(runs.length).toBe(before)
+})
+
 test('a failed theme read falls back to the light palette and still draws', async ($, on) => {
   const clock = mock.clock(on)
   stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])

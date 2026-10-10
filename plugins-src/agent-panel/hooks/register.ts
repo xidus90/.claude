@@ -16,6 +16,7 @@ let live: LiveAgent[] = []
 let reported: number | null = null
 let isBusy = false
 let hasOpened = false
+let isPaneOpen = false
 let palette: Palette = paletteOf(undefined)
 let spawnLog: SpawnLog = EMPTY_LOG
 let isOverviewOpen = true
@@ -66,15 +67,16 @@ async function refresh($: EngineInterface): Promise<void> {
 async function openPane($: EngineInterface, byUser: boolean): Promise<void> {
   hasOpened = true
   await $.ui.open(byUser ? { id: PANE, title: 'Agents', focus: true, closeOnEscape: true } : { id: PANE, title: 'Agents' })
+  isPaneOpen = true
   void refresh($)
 }
 
-// A pane listing that fails leaves what is known: a pane this session opened counts as still shown.
+// A pane listing that fails leaves what the opens and closes of this plugin say.
 async function isShown($: EngineInterface): Promise<boolean> {
   try {
     return isOpen(await $.ui.panes(), PANE)
   } catch {
-    return hasOpened
+    return isPaneOpen
   }
 }
 
@@ -135,9 +137,16 @@ export const register: Register = (on) => {
   })
 
   on('command.run', { command: 'agent-panel' }, async ($) => {
-    if (isOpen(await $.ui.panes(), PANE)) await $.ui.close({ id: PANE })
+    if (await isShown($)) await $.ui.close({ id: PANE })
     else await openPane($, true)
     return {}
+  })
+
+  // The person's close arrives here too, so a denied listing still knows the pane is gone.
+  on('ui.close', { id: PANE }, async ($, e, next) => {
+    const result = await next(e)
+    isPaneOpen = false
+    return result
   })
 
   on('agent.spawn', async ($, e, next) => {
