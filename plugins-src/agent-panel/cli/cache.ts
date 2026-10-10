@@ -49,7 +49,10 @@ export function saveCache(path: string, cache: Cache, suffix: () => string = ran
   } catch (err) {
     // Only a file or a dangling link at the path (EEXIST, ENOENT, ENOTDIR) means no cache; like any
     // untrusted folder it is skipped. Any other failure, say a denied or full disk, is reported.
-    if (!NOT_A_FOLDER.includes((err as NodeJS.ErrnoException).code)) throw err
+    const code = (err as NodeJS.ErrnoException).code
+    if (!NOT_A_FOLDER.includes(code)) throw err
+    // ENOENT also comes from a missing drive or parent; only a link that sits at the path is an obstacle.
+    if (code === 'ENOENT') lstatSync(dir)
     return
   }
   if (!ownsDir(dir)) return

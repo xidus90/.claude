@@ -90,6 +90,12 @@ test('saves nothing and reads nothing where a link to nowhere sits at the folder
   assert.deepEqual(readdirSync(root), ['agent-panel'])
 })
 
+test('reports a folder whose parent leads nowhere, since nothing sits at the folder path itself', () => {
+  const root = tempDir()
+  symlinkSync(join(root, 'gone'), join(root, 'parent'), 'junction')
+  assert.throws(() => saveCache(join(root, 'parent', 'agent-panel', 's1.json'), emptyCache()), { code: 'ENOENT' })
+})
+
 test('reports a failure to create the folder other than a non-folder at its path', () => {
   // A null byte makes mkdir fail with an error that says nothing about the path being taken.
   assert.throws(() => saveCache(join(tempDir(), 'a\0b', 's1.json'), emptyCache()), { code: 'ERR_INVALID_ARG_VALUE' })
