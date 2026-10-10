@@ -124,7 +124,12 @@ Node kann; `hooks/` läuft im Mod und darf nur `$`.
 
 **Cache-Datei:** `<tmp>/agent-panel/<session-id>.json`, nicht unter dem
 Plugin-Verzeichnis, das ein Update ersetzt. Fehlt oder ist sie unlesbar, liest
-das Skript von vorn.
+das Skript von vorn. Der Ordner wird mit Modus 0700 angelegt; einen vorhandenen nutzt
+das Skript nur, wenn er ein echter Ordner (kein Link) ist und — unter POSIX —
+dem aktuellen Nutzer gehört und Gruppe und Andere nicht darin schreiben dürfen.
+Sonst liest und schreibt es keinen Cache und fasst trotzdem zusammen. Geschrieben
+wird über eine Temp-Datei mit zufälligem Namen, die exklusiv (`wx`, Modus 0600)
+angelegt und dann umbenannt wird.
 
 **Voraussetzung:** `node` ≥ 22.18 (führt TypeScript ohne Flag aus) im PATH des
 Claude-Code-Prozesses. Scheitert der Start, zeigt das Panel „node nicht
