@@ -76,10 +76,10 @@ test('makes one cost bar part, clamped to 0..1 and empty for a share that is not
 })
 
 test('sizes the bars to the terminal cells the pane and its crab card leave', () => {
-  assert.deepEqual(layoutOf(80), { isWide: true, barCells: 76, cardBarCells: 67 })
+  assert.deepEqual(layoutOf(80), { isWide: true, barCells: 76, cardBarCells: 65 })
   // The 80 columns hold the card's border and padding (4), the crab raster, the gap and the bar.
   assert.equal(layoutOf(80).cardBarCells + 4 + crabRaster('plain').columns + CARD_GAP, 80)
-  assert.deepEqual(layoutOf(70), { isWide: true, barCells: 66, cardBarCells: 57 })
+  assert.deepEqual(layoutOf(70), { isWide: true, barCells: 66, cardBarCells: 55 })
   assert.deepEqual(layoutOf(69), { isWide: false, barCells: 65, cardBarCells: 65 })
   assert.deepEqual(layoutOf(undefined), { isWide: false, barCells: 36, cardBarCells: 36 })
   assert.equal(layoutOf(8).barCells, 10)
@@ -144,13 +144,13 @@ test('gives every status worth a whole cell its cell and fills the bar, for any 
   }
 })
 
-test('packs the crab into 8 columns of half blocks, cut to the rows its sprite fills', () => {
+test('packs the crab into 10 columns of half blocks, cut to the rows its sprite fills', () => {
   const r = crabRaster('plain')
-  assert.equal(r.columns, 8)
-  assert.equal(r.rows, 2)
-  assert.equal(crabRaster('browser').rows, 4)
+  assert.equal(r.columns, 10)
+  assert.equal(r.rows, 3)
+  assert.equal(crabRaster('browser').rows, 5)
   const bytes = Uint8Array.from(atob(r.cells), (ch) => ch.charCodeAt(0))
-  assert.equal(bytes.length, 8 * 2 * 12)
+  assert.equal(bytes.length, 10 * 3 * 12)
   const words = new Uint32Array(bytes.buffer)
   const chars = new Set<number>()
   for (let i = 0; i < words.length; i += 3) chars.add(words[i] as number)
