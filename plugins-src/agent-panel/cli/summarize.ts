@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { parseArgs } from 'node:util'
 import { loadCache, saveCache } from './cache.ts'
-import { roleOf, taskOf, type Meta } from './classify.ts'
+import { parseMeta, roleOf, taskOf, type Meta } from './classify.ts'
 import { agentFiles, findLead, findRun } from './scan.ts'
 import { emptyState, endOf, readTranscript, totals, type FileState } from './transcript.ts'
 import type { AgentSummary, Summary } from '../shared/summary.ts'
@@ -16,7 +16,7 @@ function metaOf(path: string, known: Record<string, Meta>): Meta | null {
   const cached = known[path]
   if (cached) return cached
   try {
-    const meta = JSON.parse(readFileSync(path, 'utf8')) as Meta
+    const meta = parseMeta(JSON.parse(readFileSync(path, 'utf8')))
     known[path] = meta
     return meta
   } catch {

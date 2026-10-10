@@ -101,6 +101,35 @@ test('falls back to the description, then the id, when a meta file says little o
   assert.deepEqual(s.agents.map((a) => [a.name, a.role]), [['Lead', 'lead'], ['Look around', 'agent'], ['a2', 'agent']])
 })
 
+const notStrings: unknown[] = [5, true, {}, [], [1], { toString: 0 }, [{ toString: 0 }]]
+
+for (const field of ['customAgentType', 'agentType', 'name', 'description']) {
+  test(`a meta.json ${field} that is not a string counts as absent and does not take down the summary`, () => {
+    for (const value of notStrings) {
+      const w = world()
+      const l = lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
+      agent(l, 'a1', { [field]: value }, '')
+      agent(l, 'a2', { name: 'impl-T1', agentType: 'team:coder' }, '')
+      const s = summarize(opts(w, 's1'))
+      const label = JSON.stringify(value)
+      assert.deepEqual(s.problems, [], label)
+      assert.deepEqual(s.agents.map((a) => [a.id, a.name, a.role, a.task]), [
+        ['lead:s1', 'Lead', 'lead', ''],
+        ['a1', 'a1', 'agent', 'a1'],
+        ['a2', 'impl-T1', 'coder', 'impl T1'],
+      ], label)
+    }
+  })
+}
+
+test('a meta.json field that is not a string yields to the next field that is', () => {
+  const w = world()
+  const l = lead(w, 'C--repo', 's1', '')
+  agent(l, 'a1', { customAgentType: [], agentType: 'team:coder', name: { toString: 0 }, description: 'Look around' }, '')
+  const s = summarize(opts(w, 's1'))
+  assert.deepEqual(s.agents.map((a) => [a.name, a.role, a.task]), [['Lead', 'lead', ''], ['Look around', 'coder', 'Look around']])
+})
+
 test('reads only what was added since the last call, and sums unreadable lines', () => {
   const w = world()
   const l = lead(w, 'C--repo', 's1', assistant({ id: 'm1' }) + '{oops\n')

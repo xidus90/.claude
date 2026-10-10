@@ -1,5 +1,18 @@
 export type Meta = { name?: string; description?: string; agentType?: string; customAgentType?: string }
 
+const META_FIELDS = ['name', 'description', 'agentType', 'customAgentType'] as const
+
+// A meta file is hand-editable JSON: a field counts only when it is a string.
+export function parseMeta(raw: unknown): Meta {
+  const meta: Meta = {}
+  if (typeof raw !== 'object' || raw === null) return meta
+  for (const field of META_FIELDS) {
+    const value = (raw as Record<string, unknown>)[field]
+    if (typeof value === 'string') meta[field] = value
+  }
+  return meta
+}
+
 export function roleOf(meta: Meta): string {
   const raw = meta.customAgentType || meta.agentType || ''
   return raw.replace(/^[^:]*:/, '') || 'agent'
