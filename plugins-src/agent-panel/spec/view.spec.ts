@@ -354,6 +354,12 @@ test('reads only a bounded prefix of a text, so a huge one costs no more than a 
   assert.equal(huge, `${'x'.repeat(99)}…`)
 })
 
+test('drops half a surrogate pair that the prefix cut leaves at its end', () => {
+  const v = buildView(input(plain([lead({}), agent({ name: `${' '.repeat(399)}😀tail` }), agent({ id: 'b', name: `a${' '.repeat(398)}😀tail` })]), { error: `${' '.repeat(399)}😀tail` }))
+  assert.deepEqual((v.groups[1]?.rows ?? []).map((r) => r.label), ['', 'a'])
+  assert.deepEqual(v.notices, [])
+})
+
 test('caps the script error notice at the same length as every other text', () => {
   const v = buildView(input(null, { error: `summarize exit 1: ${'E'.repeat(300)}` }))
   assert.equal(v.notices[0], `⚠ summarize exit 1: ${'E'.repeat(81)}…`)

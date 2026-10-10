@@ -119,7 +119,8 @@ function noteOf(a: AgentSummary, glyph: Glyph): string {
 // The host refuses a whole tree for one control character in a text, and a line break would split a row.
 function tidy(text: string): string {
   // A prefix fills the cap twice over, so a megabyte text costs no more per render than a long one.
-  const flat = text.slice(0, MAX_TEXT * 4).replace(/[\s\p{Cc}]+/gu, ' ').trim()
+  // Its cut can leave half a surrogate pair, which the \p{Cs} here turns into a blank like any lone one.
+  const flat = text.slice(0, MAX_TEXT * 4).replace(/[\s\p{Cc}\p{Cs}]+/gu, ' ').trim()
   const chars = [...flat]
   return chars.length > MAX_TEXT ? `${chars.slice(0, MAX_TEXT - 1).join('')}…` : flat
 }
