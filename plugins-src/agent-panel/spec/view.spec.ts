@@ -540,6 +540,7 @@ test('shows another session from its transcript only', () => {
   const s = plain([lead({}), agent({ id: 'b', name: 'busy', end: 'open' })])
   const idle = buildView(input(s, { foreign: { title: 'Agent-team fortsetzen', isLive: false }, reportedCostUsd: 99 }))
   assert.equal(idle.title, 'Sitzung: Agent-team fortsetzen')
+  assert.equal(buildView(input(s, { foreign: { title: 'x'.repeat(500), isLive: false } })).title, `Sitzung: ${'x'.repeat(60)}`)
   assert.equal(idle.subtitle, 'nur aus dem Transkript')
   assert.equal(idle.groups.find((g) => g.key === 'lead')?.rows[0]?.glyph, '✓')
   // The hook passes no reported cost for another session; even if one came, it would not be shown.

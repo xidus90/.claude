@@ -693,6 +693,11 @@ test('picking another session summarizes its transcript with its own config and 
   expect(await ui.find({ type: 'Text', text: 'Sitzung: Agent-team fortsetzen' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: 'nur aus dem Transkript' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /gemeldet/ })).toBeUndefined()
+  // A long title shrinks; the picker keeps its width and stays in reach.
+  expect((await ui.find({ key: 'title' }))?.props.flexShrink).toBe(1)
+  expect((await ui.find({ key: 'picker-slot' }))?.props.flexShrink).toBe(0)
+  // The token bar keeps a line of space below the tiles.
+  expect((await ui.find({ key: 'stripe-room' }))?.props.marginTop).toBe(1)
 })
 
 test('a picked session that only left the 20 newest stays picked', async ($, on) => {

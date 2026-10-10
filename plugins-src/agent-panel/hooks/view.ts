@@ -252,7 +252,7 @@ export function buildView(input: ViewInput): View {
 
   const gens = s.generations.length
   return {
-    title: input.foreign ? `Sitzung: ${tidy(input.foreign.title)}` : isTeam ? `Lauf ${s.runId}` : 'Diese Sitzung',
+    title: input.foreign ? `Sitzung: ${[...tidy(input.foreign.title)].slice(0, PICK_TEXT).join('')}` : isTeam ? `Lauf ${s.runId}` : 'Diese Sitzung',
     gens: !input.foreign && isTeam && gens > 1 ? `Gen 1–${gens}` : '',
     subtitle,
     totals: `≈ ${fmtCost(total)}   ${fmtTokens(tokens)} Tok   ${fmtTime(wall)}${unpriced ? `   ohne ${unpriced} Agents` : ''}`,

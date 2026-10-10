@@ -278,11 +278,11 @@ export const register: Register = (on) => {
         : []
       return Box({ flexDirection: 'column', children: [
         Box({ key: 'title-row', flexDirection: 'row', justifyContent: 'space-between', columnGap: 2, children: [
-          Box({ flexDirection: 'row', children: [
+          Box({ key: 'title', flexDirection: 'row', flexShrink: 1, children: [
             Text({ bold: true, wrap: 'truncate-end', children: [v.title] }),
             ...(v.gens ? [Text({ dimColor: true, wrap: 'truncate-end', children: [` · ${v.gens}`] })] : []),
           ] }),
-          ...(isWide ? picker : []),
+          ...(isWide ? [Box({ key: 'picker-slot', flexShrink: 0, children: picker })] : []),
         ] }),
         ...(isWide ? [] : picker),
         ...(v.subtitle ? [Text({ dimColor: true, children: [v.subtitle] })] : []),
@@ -297,7 +297,7 @@ export const register: Register = (on) => {
                   Text({ dimColor: true, children: [label] }), Text({ bold: true, children: [value] }),
                 ] })) }),
           ...(v.overview.unpriced ? [Text({ color: 'warning', children: [v.overview.unpriced] })] : []),
-          bar('stripe-total', 'Tokenverteilung', tokenParts(palette, v.overview.shares), stripeSvg(palette, v.overview.shares, 10), 10, barCells),
+          Box({ key: 'stripe-room', marginTop: 1, children: [bar('stripe-total', 'Tokenverteilung', tokenParts(palette, v.overview.shares), stripeSvg(palette, v.overview.shares, 10), 10, barCells)] }),
           Box({ key: 'legend', flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', columnGap: 2, children: [
             amount(keys.input, 'in', v.overview.amounts.input), amount(keys.output, 'out', v.overview.amounts.output),
             amount(keys.cacheRead, 'cache read', v.overview.amounts.cacheRead), amount(keys.cacheWrite, 'cache write', v.overview.amounts.cacheWrite),
