@@ -168,7 +168,10 @@ Der Starter legt `<repo>/.team-runs/<lauf>/` an (von git ignoriert), schreibt
 die Settings des Laufs nach `~/.claude/team-settings/` (unversioniert) und
 startet den Orchestrator als Lead. Push und Merge bleiben beim Menschen.
 
-- Lead abgestürzt: `claude-team.ps1 -Resume <lauf>`
+- Lead abgestürzt: `claude-team.ps1 -Resume <lauf>` — in einem Terminal, nicht
+  über `!` in einer Sitzung (dort fehlt die Eingabe). Der Starter verweigert
+  das Fortsetzen (Exit 1), solange ein Prozess mit einer Sitzungs-ID des Laufs
+  noch läuft: Zwei Leads legten dieselben Tasks an.
 - Lauf aufgeben und aufräumen: `claude-team.ps1 -Cleanup <lauf>` (Exit 1,
   wenn etwas übrig bleibt)
 

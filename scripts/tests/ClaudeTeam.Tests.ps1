@@ -206,6 +206,21 @@ Describe 'Invoke-WithoutEffortOverride' {
     }
 }
 
+Describe 'Get-LiveLead' {
+    It 'finds a process started with one of the session ids, and nothing for none' {
+        $id = [guid]::NewGuid().ToString()
+        $pwsh = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
+        $process = Start-Process -FilePath $pwsh -ArgumentList '-NoProfile', '-Command', 'Start-Sleep 60', '--session-id', $id -PassThru -WindowStyle Hidden
+        try {
+            @(Get-LiveLead -Sessions @('other', $id)) | Should -Contain $process.Id
+            @(Get-LiveLead -Sessions @([guid]::NewGuid().ToString())) | Should -HaveCount 0
+            @(Get-LiveLead -Sessions @()) | Should -HaveCount 0
+        } finally {
+            Stop-Process -Id $process.Id -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Describe 'Invoke-ClaudeTeam' {
     BeforeEach {
         $script:Repo = New-TestRepo
@@ -214,9 +229,21 @@ Describe 'Invoke-ClaudeTeam' {
         Mock Get-SettingsPath { Join-Path $TestDrive "settings/$Name.json" }
         Mock Resolve-ClaudeExecutable { 'C:/fake/claude.exe' }
         Mock Invoke-ClaudeProcess { $script:Argv = $ArgumentList; 0 }
+        Mock Get-LiveLead { @() }
         Push-Location $Repo
     }
     AfterEach { Pop-Location }
+
+    It 'refuses to resume while a lead of the run still runs' {
+        $run = New-TeamRun -Repo $Repo -Plan 'docs/plan.md' -Name 'r1'
+        $meta = Read-RunJson -Run $run
+        $meta.sessions = [string[]]@('s-live')
+        Write-RunJson -Run $run -Meta $meta
+        Mock Get-LiveLead { if ($Sessions -contains 's-live') { 4711 } }
+        Invoke-ClaudeTeam -Resume 'r1' | Should -Be 1
+        Should -Invoke Invoke-ClaudeProcess -Times 0
+        (Read-RunJson -Run $run).generation | Should -Be 1
+    }
 
     It 'refuses no or two modes' {
         Invoke-ClaudeTeam | Should -Be 2
