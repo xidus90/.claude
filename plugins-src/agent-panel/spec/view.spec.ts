@@ -363,8 +363,8 @@ test('drops half a surrogate pair that the prefix cut leaves at its end', () => 
 test('takes a text of any type: a number shows as its digits, anything else as blank', () => {
   // A meta.json or a transcript line from other tooling can hold any JSON value where a string belongs.
   const odd = (id: string, value: unknown) => agent({ id, name: value as string })
-  const v = buildView(input(plain([lead({}), odd('a', 42), odd('b', null), odd('c', undefined), odd('d', { x: 1 }), odd('e', ['x'])])))
-  assert.deepEqual((v.groups[1]?.rows ?? []).map((r) => r.label), ['42', '', '', '', ''])
+  const v = buildView(input(plain([lead({}), odd('a', 42), odd('b', null), odd('c', undefined), odd('d', { x: 1 }), odd('e', ['x']), odd('f', true)])))
+  assert.deepEqual((v.groups[1]?.rows ?? []).map((r) => r.label), ['42', '', '', '', '', ''])
 })
 
 test('caps the script error notice at the same length as every other text', () => {

@@ -118,6 +118,7 @@ function noteOf(a: AgentSummary, glyph: Glyph): string {
 
 // The host refuses a whole tree for one control character in a text, and a line break would split a row.
 function tidy(value: unknown): string {
+  // A number reads as its digits; null, a boolean or an object has no text worth showing.
   const text = typeof value === 'string' ? value : typeof value === 'number' ? String(value) : ''
   // A prefix fills the cap twice over, so a megabyte text costs no more per render than a long one.
   // Its cut can leave half a surrogate pair, which the \p{Cs} here turns into a blank like any lone one.
