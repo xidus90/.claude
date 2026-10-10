@@ -86,14 +86,22 @@ function applyAssistant(s: FileState, line: Line): FileState {
   return { ...base, pending: next, model, hasAnswer, errorText: '' }
 }
 
+/** Null for a line that is not JSON, or JSON that is not an object. */
+function parseLine(raw: string): Line | null {
+  try {
+    const value: unknown = JSON.parse(raw)
+    return typeof value === 'object' && value !== null && !Array.isArray(value) ? (value as Line) : null
+  } catch {
+    return null
+  }
+}
+
 export function applyLines(prev: FileState, text: string): FileState {
   let s = prev
   for (const raw of text.split('\n')) {
     if (raw.trim() === '') continue
-    let line: Line
-    try {
-      line = JSON.parse(raw) as Line
-    } catch {
+    const line = parseLine(raw)
+    if (!line) {
       s = { ...s, unreadable: s.unreadable + 1 }
       continue
     }

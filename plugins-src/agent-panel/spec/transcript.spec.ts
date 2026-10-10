@@ -84,6 +84,14 @@ test('counts unreadable lines and reads on', () => {
   assert.equal(totals(s).tokens.output, 20)
 })
 
+test('counts a line that is valid JSON but not an object as unreadable', () => {
+  for (const raw of ['null', '42', '"text"', 'true', '[]', '[{"type":"assistant"}]']) {
+    const s = read(raw + '\n' + assistant({ id: 'a' }))
+    assert.equal(s.unreadable, 1, raw)
+    assert.equal(totals(s).tokens.output, 20, raw)
+  }
+})
+
 test('reads only new bytes, and leaves a half-written last line for later', () => {
   const dir = tempDir()
   const file = join(dir, 't.jsonl')

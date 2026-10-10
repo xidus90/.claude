@@ -111,6 +111,15 @@ test('reads only what was added since the last call, and sums unreadable lines',
   assert.equal(s.unreadableLines, 1)
 })
 
+test('a JSON null line is counted as unreadable and does not block the transcript', () => {
+  const w = world()
+  lead(w, 'C--repo', 's1', 'null\n' + assistant({ id: 'm1' }))
+  const s = summarize(opts(w, 's1'))
+  assert.deepEqual(s.problems, [])
+  assert.equal(s.unreadableLines, 1)
+  assert.equal(s.agents[0]?.tokens.output, 20)
+})
+
 test('reports a transcript it cannot read and goes on', () => {
   const w = world()
   const l = lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
