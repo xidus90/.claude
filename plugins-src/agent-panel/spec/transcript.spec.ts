@@ -261,3 +261,14 @@ test('an iteration of an unknown model leaves the message unpriced, and a bad it
   const notList = { input_tokens: 1, output_tokens: 2, iterations: 'many' }
   assert.deepEqual(totals(read(assistant({ id: 'm1', model: 'claude-opus-5-5', usage: notList }))).tokens, { input: 1, output: 2, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 })
 })
+
+test('a subagent that hands its report back has answered, though it stops on a tool call', () => {
+  const handback = (name: string, content: unknown) => JSON.stringify({
+    type: 'assistant',
+    message: { id: 'h1', model: 'claude-haiku-5-5', stop_reason: null, usage: { output_tokens: 3 }, content },
+  }) + '\n'
+  assert.equal(endOf(read(handback('', [{ type: 'tool_use', name: 'SubagentHandback', input: { message: 'hi' } }]))), 'answered')
+  assert.equal(endOf(read(handback('', [{ type: 'tool_use', name: 'Write', input: {} }]))), 'open')
+  assert.equal(endOf(read(handback('', 'text'))), 'open')
+  assert.equal(endOf(read(handback('', [null, 'x']))), 'open')
+})

@@ -99,10 +99,14 @@ function firstText(content: unknown): string {
   return block ? block.text.slice(0, 80) : 'API-Fehler'
 }
 
+// A subagent that delivers its report through the SubagentHandback tool ends on that call, never on end_turn.
+const handsBack = (content: unknown): boolean =>
+  Array.isArray(content) && content.some((b) => typeof b === 'object' && b !== null && (b as { name?: unknown }).name === 'SubagentHandback')
+
 function applyAssistant(s: FileState, line: Line): FileState {
   const msg = line.message ?? {}
   if (line.isApiErrorMessage) return { ...s, errorText: firstText(msg.content) }
-  const hasAnswer = s.hasAnswer || msg.stop_reason === 'end_turn'
+  const hasAnswer = s.hasAnswer || msg.stop_reason === 'end_turn' || handsBack(msg.content)
   const model = typeof msg.model === 'string' ? msg.model : ''
   if (!msg.usage || model === '<synthetic>') return { ...s, hasAnswer, errorText: '' }
   const id = msg.id ?? ''
