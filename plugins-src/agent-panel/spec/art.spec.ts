@@ -124,6 +124,26 @@ test('fills the whole block bar when the shares add up to one', () => {
   assert.equal(cells(bar, '#999999'), 0)
 })
 
+test('keeps a status worth exactly a cell although the running share sums to just under a half', () => {
+  // 2 of 20 is one cell at 10, but (2 + 7 + 2) / 20 * 10 comes out as 5.499999999999999.
+  const bar = blockBar(statusParts({ running: 2, done: 7, failed: 2, aborted: 9 }), 10, '#999999')
+  assert.equal(cells(bar, STATUS_COLOR.failed), 1)
+})
+
+test('gives every status worth a whole cell its cell and fills the bar, for any counts', () => {
+  const statuses = ['running', 'done', 'failed', 'aborted'] as const
+  for (let width = 10; width <= 20; width++) {
+    for (let n = 0; n < 10 ** 4; n++) {
+      const counts = { running: n % 10, done: Math.floor(n / 10) % 10, failed: Math.floor(n / 100) % 10, aborted: Math.floor(n / 1000) }
+      const total = counts.running + counts.done + counts.failed + counts.aborted
+      if (total === 0) continue
+      const bar = blockBar(statusParts(counts), width, '#999999')
+      assert.equal(cells(bar, '#999999'), 0, `${width} ${JSON.stringify(counts)}`)
+      for (const k of statuses) if (counts[k] * width >= total) assert.ok(cells(bar, STATUS_COLOR[k]) >= 1, `${width} ${k} ${JSON.stringify(counts)}`)
+    }
+  }
+})
+
 test('packs the crab into a 15×7 raster of half blocks', () => {
   const r = crabRaster('plain')
   assert.equal(r.columns, 15)
