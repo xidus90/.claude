@@ -44,7 +44,7 @@
 **Interfaces:**
 - Produces: `AgentSummary.effort: string` ('' wenn unbekannt); `FileState.effort: string`; Cache-Version 2.
 
-- [ ] **Step 1: Tests**
+- [x] **Step 1: Tests**
 
 In `spec/transcript.spec.ts` ergänzen:
 
@@ -79,9 +79,9 @@ In `spec/summarize.spec.ts` im Test „summarizes a plain session …“ die Lea
 
 (Die bisherige Zeile `const l = lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))` wird dadurch ersetzt.)
 
-- [ ] **Step 2: Rot** — Run (in `plugins-src/agent-panel`): `node --test spec/transcript.spec.ts spec/cache.spec.ts spec/summarize.spec.ts` → FAIL (`effort` undefined, v1-Cache gilt noch).
+- [x] **Step 2: Rot** — Run (in `plugins-src/agent-panel`): `node --test spec/transcript.spec.ts spec/cache.spec.ts spec/summarize.spec.ts` → FAIL (`effort` undefined, v1-Cache gilt noch).
 
-- [ ] **Step 3: Implementieren**
+- [x] **Step 3: Implementieren**
 
 `shared/summary.ts`, in `AgentSummary` nach `model: string`:
 
@@ -109,9 +109,9 @@ In `spec/summarize.spec.ts` im Test „summarizes a plain session …“ die Lea
 
 Alle anderen Stellen, die `AgentSummary` bauen (Fixtures in `spec/view.spec.ts` `agent()`, `hooks/register.test.ts` `LEAD`), bekommen `effort: ''` bzw. einen Wert, damit `tsc` grün bleibt.
 
-- [ ] **Step 4: Grün** — Run: `npm test` → PASS, 100 %; `npm run typecheck` → exit 0; `npm run kit` → PASS.
+- [x] **Step 4: Grün** — Run: `npm test` → PASS, 100 %; `npm run typecheck` → exit 0; `npm run kit` → PASS.
 
-- [ ] **Step 5: Commit** — `Carry the reasoning effort from transcripts into the summary`
+- [x] **Step 5: Commit** — `Carry the reasoning effort from transcripts into the summary`
 
 ---
 
@@ -134,7 +134,7 @@ Alle anderen Stellen, die `AgentSummary` bauen (Fixtures in `spec/view.spec.ts` 
   - `type Overview = { cost: string; tokens: string; time: string; shares: Shares; amounts: { input: string; output: string; cacheRead: string; cacheWrite: string }; line: string }`
   - `countsLine(c: StatusCounts): string`, `statusLine(c: StatusCounts): string`, `visibleRows(g: Group, hideDone: boolean): Row[]`
 
-- [ ] **Step 1: Tests** (an `spec/view.spec.ts` anhängen; `agent()` liefert jetzt `effort: 'medium'`)
+- [x] **Step 1: Tests** (an `spec/view.spec.ts` anhängen; `agent()` liefert jetzt `effort: 'medium'`)
 
 ```ts
 import { countsLine, sharesOf, statusLine, visibleRows } from '../hooks/view.ts'
@@ -201,9 +201,9 @@ test('hides finished rows on request', () => {
 })
 ```
 
-- [ ] **Step 2: Rot** — Run: `node --test spec/view.spec.ts` → FAIL (Exporte fehlen).
+- [x] **Step 2: Rot** — Run: `node --test spec/view.spec.ts` → FAIL (Exporte fehlen).
 
-- [ ] **Step 3: Implementieren** (in `hooks/view.ts`)
+- [x] **Step 3: Implementieren** (in `hooks/view.ts`)
 
 Neue Typen und Helfer oben nach `Glyph`:
 
@@ -318,9 +318,9 @@ export const countsLine = (c: StatusCounts): string =>
 export const visibleRows = (g: Group, hideDone: boolean): Row[] => (hideDone ? g.rows.filter((r) => r.status !== 'done') : g.rows)
 ```
 
-- [ ] **Step 4: Grün** — Run: `npm test` → PASS, 100 % für `hooks/view.ts`; `npm run typecheck` → exit 0.
+- [x] **Step 4: Grün** — Run: `npm test` → PASS, 100 % für `hooks/view.ts`; `npm run typecheck` → exit 0.
 
-- [ ] **Step 5: Commit** — `Give the panel view counts, token shares and row details for the new layout`
+- [x] **Step 5: Commit** — `Give the panel view counts, token shares and row details for the new layout`
 
 ---
 
@@ -339,7 +339,7 @@ export const visibleRows = (g: Group, hideDone: boolean): Row[] => (hideDone ? g
   - `spriteOf(costume: string): readonly Pixel[]` (Körper + Kostüm)
   - `pixelGrid(pixels: readonly Pixel[]): (string | null)[][]` (Zeilen × Spalten, Farbe oder null)
 
-- [ ] **Step 1: Test**
+- [x] **Step 1: Test**
 
 `spec/sprites.spec.ts`:
 
@@ -389,9 +389,9 @@ test('falls back to the plain crab for an unknown costume key', () => {
 })
 ```
 
-- [ ] **Step 2: Rot** — Run: `node --test spec/sprites.spec.ts` → FAIL (Modul fehlt).
+- [x] **Step 2: Rot** — Run: `node --test spec/sprites.spec.ts` → FAIL (Modul fehlt).
 
-- [ ] **Step 3: Implementieren**
+- [x] **Step 3: Implementieren**
 
 `hooks/sprites.ts`:
 
@@ -478,9 +478,9 @@ export function pixelGrid(pixels: readonly Pixel[]): (string | null)[][] {
 }
 ```
 
-- [ ] **Step 4: Grün** — Run: `node --test spec/sprites.spec.ts` → PASS; `npm test` → 100 % für `hooks/sprites.ts` (Coverage-Include in `package.json` um `--test-coverage-include=hooks/sprites.ts --test-coverage-include=hooks/art.ts --test-coverage-include=hooks/open.ts` erweitern); `npm run typecheck` → exit 0.
+- [x] **Step 4: Grün** — Run: `node --test spec/sprites.spec.ts` → PASS; `npm test` → 100 % für `hooks/sprites.ts` (Coverage-Include in `package.json` um `--test-coverage-include=hooks/sprites.ts --test-coverage-include=hooks/art.ts --test-coverage-include=hooks/open.ts` erweitern); `npm run typecheck` → exit 0.
 
-- [ ] **Step 5: Commit** — `Add the crab sprite and a costume per agent role`
+- [x] **Step 5: Commit** — `Add the crab sprite and a costume per agent role`
 
 ---
 
@@ -506,7 +506,7 @@ export function pixelGrid(pixels: readonly Pixel[]): (string | null)[][] {
   - `crabRaster(costume: string): { columns: number; rows: number; cells: string }`
   - `SVG_LIMIT = 131_072`
 
-- [ ] **Step 1: Test**
+- [x] **Step 1: Test**
 
 `spec/art.spec.ts`:
 
@@ -595,9 +595,9 @@ test('uses a lower half block where only the bottom pixel is set', () => {
 })
 ```
 
-- [ ] **Step 2: Rot** — Run: `node --test spec/art.spec.ts` → FAIL.
+- [x] **Step 2: Rot** — Run: `node --test spec/art.spec.ts` → FAIL.
 
-- [ ] **Step 3: Implementieren**
+- [x] **Step 3: Implementieren**
 
 `hooks/art.ts`:
 
@@ -736,9 +736,9 @@ export function crabRaster(costume: string): { columns: number; rows: number; ce
 
 Hinweis: `GRID_H / 4 = 7` Zeilen, je Terminalzeile werden die Pixelzeilen `4r` und `4r+2` abgetastet (jede zweite Pixelzeile, zwei je Zelle). Liefert der Test „uses a lower half block …“ für `plain` keinen unteren Halbblock, die Abtastung nicht ändern, sondern im Test ein Kostüm wählen, dessen Pixel nur in der unteren Abtastzeile liegen (z. B. `cleaner`), und das im Bericht nennen.
 
-- [ ] **Step 4: Grün** — Run: `node --test spec/art.spec.ts` → PASS; `npm test` → 100 % für `hooks/art.ts`; `npm run typecheck` → exit 0.
+- [x] **Step 4: Grün** — Run: `node --test spec/art.spec.ts` → PASS; `npm test` → 100 % für `hooks/art.ts`; `npm run typecheck` → exit 0.
 
-- [ ] **Step 5: Commit** — `Draw tiles, stripes, bars and crabs as SVG and terminal cells`
+- [x] **Step 5: Commit** — `Draw tiles, stripes, bars and crabs as SVG and terminal cells`
 
 ---
 
@@ -754,7 +754,7 @@ Hinweis: `GRID_H / 4 = 7` Zeilen, je Terminalzeile werden die Pixelzeilen `4r` u
   - `TEAM_GAP_MS = 600_000`, `BURST = 3`, `BURST_MS = 30_000`
   - `onSpawn(log: SpawnLog, at: number, isTeammate: boolean): { log: SpawnLog; shouldOpen: boolean }`
 
-- [ ] **Step 1: Test**
+- [x] **Step 1: Test**
 
 `spec/open.spec.ts`:
 
@@ -798,9 +798,9 @@ test('keeps only the spawns of the last thirty seconds', () => {
 })
 ```
 
-- [ ] **Step 2: Rot** — Run: `node --test spec/open.spec.ts` → FAIL.
+- [x] **Step 2: Rot** — Run: `node --test spec/open.spec.ts` → FAIL.
 
-- [ ] **Step 3: Implementieren**
+- [x] **Step 3: Implementieren**
 
 `hooks/open.ts`:
 
@@ -825,9 +825,9 @@ export function onSpawn(log: SpawnLog, at: number, isTeammate: boolean): { log: 
 }
 ```
 
-- [ ] **Step 4: Grün** — Run: `node --test spec/open.spec.ts` → PASS; `npm test` → 100 % für `hooks/open.ts`.
+- [x] **Step 4: Grün** — Run: `node --test spec/open.spec.ts` → PASS; `npm test` → 100 % für `hooks/open.ts`.
 
-- [ ] **Step 5: Commit** — `Decide when a spawn reopens the panel: a new team run or a swarm`
+- [x] **Step 5: Commit** — `Decide when a spawn reopens the panel: a new team run or a swarm`
 
 ---
 
@@ -839,7 +839,7 @@ export function onSpawn(log: SpawnLog, at: number, isTeammate: boolean): { log: 
 **Interfaces:**
 - Consumes: alles aus Tasks 2–5; bestehend `parseResult`, `startError`, `reportedCost`, `scriptArgs`, `dirsOf`, `toggle`, `isOpen`, `rowLine`, `detailLine`, `glyphColor`, `groupLine`.
 
-- [ ] **Step 1: Kit-Tests ergänzen** (in `hooks/register.test.ts`; `LEAD` bekommt `effort: 'xhigh'`; eine zweite Agent-Zusammenfassung `TEAM` mit `runId: 'r1'`, einem Lead und einem `implementer-backend`-Agent `a1`)
+- [x] **Step 1: Kit-Tests ergänzen** (in `hooks/register.test.ts`; `LEAD` bekommt `effort: 'xhigh'`; eine zweite Agent-Zusammenfassung `TEAM` mit `runId: 'r1'`, einem Lead und einem `implementer-backend`-Agent `a1`)
 
 ```ts
 const AGENT = { ...LEAD, id: 'a1', kind: 'agent', name: 'impl-T1', role: 'implementer-backend', task: 'impl T1', model: 'claude-sonnet-5-5', effort: 'medium' }
@@ -920,9 +920,9 @@ test('a failed theme read falls back to the light palette and still draws', asyn
 
 Die bisherigen Tests, die nach `type: 'Text', text: /^≈ \$0\.02/` suchen, auf das neue Kachel-Layout umstellen: im Terminal steht die Übersicht als Text `Kosten ≈ $0.02 · Tokens … · Zeit …` (siehe Step 3), in der Desktop-App als `Svg` mit Schlüssel `svg-tiles`. Den Fall „Zeichnung wirft“ deckt die Fehlerbehandlung in Step 3 ab; einen echten Wurf aus `art.ts` kann kein Kit-Stub auslösen, er bleibt dem Rauchtest. Der letzte Test prüft stattdessen, dass ein verweigertes `config.list` nicht stört.
 
-- [ ] **Step 2: Rot** — Run: `npm run kit` → FAIL (Schlüssel `svg-tiles`, `crab-…`, `sec-overview`, `hide-done` fehlen).
+- [x] **Step 2: Rot** — Run: `npm run kit` → FAIL (Schlüssel `svg-tiles`, `crab-…`, `sec-overview`, `hide-done` fehlen).
 
-- [ ] **Step 3: Implementieren** (`hooks/register.ts`)
+- [x] **Step 3: Implementieren** (`hooks/register.ts`)
 
 Zusätzliche Imports:
 
@@ -1059,11 +1059,11 @@ Hinweise für die Umsetzung:
 - `Svg` wird nur für `isDesktop`, `Raster` nur für das Terminal erzeugt (die jeweils andere Oberfläche hat das Element nicht).
 - `Text({ color: 'warning' })` nutzt den Theme-Schlüssel; die Farben der Balken sind Hex-Werte.
 
-- [ ] **Step 4: Grün** — Run: `npm run kit` → alle Tests PASS; `npm run validate` → passed; `npm run typecheck` → exit 0; `npm test` → PASS, 100 %.
+- [x] **Step 4: Grün** — Run: `npm run kit` → alle Tests PASS; `npm run validate` → passed; `npm run typecheck` → exit 0; `npm test` → PASS, 100 %.
 
-- [ ] **Step 5: Ansehen** — `claude --plugin-dir plugins-src/agent-panel` in einem Terminal starten (Typen werden dabei neu geschrieben), `/agent-panel`, einen Subagenten starten; Screenshot bzw. Beschreibung von Terminal schmal und breit in den Bericht. Desktop-App sieht der Nutzer im Rauchtest (Task 7).
+- [x] **Step 5: Ansehen** — `claude --plugin-dir plugins-src/agent-panel` in einem Terminal starten (Typen werden dabei neu geschrieben), `/agent-panel`, einen Subagenten starten; Screenshot bzw. Beschreibung von Terminal schmal und breit in den Bericht. Desktop-App sieht der Nutzer im Rauchtest (Task 7).
 
-- [ ] **Step 6: Commit** — `Draw the panel graphically: tiles, stripes, status bar, role cards with crabs`
+- [x] **Step 6: Commit** — `Draw the panel graphically: tiles, stripes, status bar, role cards with crabs`
 
 ---
 
@@ -1073,9 +1073,9 @@ Hinweise für die Umsetzung:
 - Modify: `README.md` (Repo-Wurzel), `plugins-src/agent-panel/.claude-plugin/plugin.json`
 - Create: `docs/.superpowers/smoke/2026-10-09-agent-panel-optik-rauchtest.md`
 
-- [ ] **Step 1: Version** — In `plugin.json` `"version": "0.2.0"`, damit die installierte Kopie sich erneuert (`claude plugin install agent-panel@claude-config` nach dem Merge).
+- [x] **Step 1: Version** — In `plugin.json` `"version": "0.2.0"`, damit die installierte Kopie sich erneuert (`claude plugin install agent-panel@claude-config` nach dem Merge).
 
-- [ ] **Step 2: README** — Im Abschnitt „Agent-Panel“ nach dem ersten Absatz einfügen:
+- [x] **Step 2: README** — Im Abschnitt „Agent-Panel“ nach dem ersten Absatz einfügen:
 
 ```markdown
 In der Desktop-App zeichnet das Panel Kacheln, einen Token-Streifen
@@ -1089,6 +1089,6 @@ Claude Code und öffnet sich von selbst, wenn ein Team-Lauf startet oder
 mindestens drei Agents in 30 Sekunden starten.
 ```
 
-- [ ] **Step 3: Rauchtest-Protokoll** — Checkliste mit Erwartung je Punkt, Beobachtung leer („offen — vom Nutzer“), für: Desktop hell, Desktop dunkel, Terminal schmal (< 70), Terminal breit (≥ 144, Krabben), Einklappen aller drei Ebenen, „Fertige ausblenden“, Team-Lauf öffnet das Panel nach Schließen erneut, drei Subagenten in 30 s öffnen es, ein Lauf mit vielen Agents bleibt flüssig.
+- [x] **Step 3: Rauchtest-Protokoll** — Checkliste mit Erwartung je Punkt, Beobachtung leer („offen — vom Nutzer“), für: Desktop hell, Desktop dunkel, Terminal schmal (< 70), Terminal breit (≥ 144, Krabben), Einklappen aller drei Ebenen, „Fertige ausblenden“, Team-Lauf öffnet das Panel nach Schließen erneut, drei Subagenten in 30 s öffnen es, ein Lauf mit vielen Agents bleibt flüssig.
 
-- [ ] **Step 4: Commit** — `Document the panel's new look and add its smoke checklist`
+- [x] **Step 4: Commit** — `Document the panel's new look and add its smoke checklist`
