@@ -233,3 +233,31 @@ test('a timestamp that is not a string counts as missing instead of throwing', (
   const s = read(JSON.stringify({ type: 'user', timestamp: { toString: 0 } }) + '\n' + JSON.stringify({ type: 'user', timestamp: { valueOf: 0, toString: 0 } }) + '\n')
   assert.equal(s.firstAt, null)
 })
+
+// A message with an advisor call, as Claude Code writes it: the top-level usage holds only the executor's turns.
+const ADVISED = {
+  input_tokens: 4, output_tokens: 527, cache_read_input_tokens: 184497, cache_creation_input_tokens: 2337,
+  cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 1001 },
+  iterations: [
+    { type: 'message', input_tokens: 2, output_tokens: 250, cache_read_input_tokens: 91748, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 1001 } },
+    { type: 'advisor_message', model: 'claude-fable-5-1', input_tokens: 96234, output_tokens: 4404, cache_read_input_tokens: 0, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 0 } },
+    { type: 'message', input_tokens: 2, output_tokens: 277, cache_read_input_tokens: 92749, cache_creation: { ephemeral_5m_input_tokens: 1336, ephemeral_1h_input_tokens: 0 } },
+  ],
+}
+
+test('prices every iteration of a message by its own model, the advisor call included', () => {
+  const t = totals(read(assistant({ id: 'm1', model: 'claude-opus-5-5', usage: ADVISED })))
+  assert.deepEqual(t.tokens, { input: 96238, output: 4931, cacheRead: 184497, cacheWrite5m: 1336, cacheWrite1h: 1001 })
+  // Opus 5.5 for the two executor turns, Fable 5.1 for the advisor.
+  const opus = (4 * 4 + 527 * 20 + 184497 * 0.2 + 1336 * 5 + 1001 * 8) / 1e6
+  const fable = (96234 * 10 + 4404 * 50) / 1e6
+  assert.ok(Math.abs(t.costUsd - (opus + fable)) < 1e-9, String(t.costUsd))
+  assert.equal(t.unpriced, false)
+})
+
+test('an iteration of an unknown model leaves the message unpriced, and a bad iteration list is ignored', () => {
+  const unknown = { ...ADVISED, iterations: [{ type: 'advisor_message', model: 'claude-x-9', input_tokens: 5 }, null, 'x'] }
+  assert.equal(totals(read(assistant({ id: 'm1', model: 'claude-opus-5-5', usage: unknown }))).unpriced, true)
+  const notList = { input_tokens: 1, output_tokens: 2, iterations: 'many' }
+  assert.deepEqual(totals(read(assistant({ id: 'm1', model: 'claude-opus-5-5', usage: notList }))).tokens, { input: 1, output: 2, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 })
+})

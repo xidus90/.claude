@@ -6,7 +6,7 @@ import type { FileState } from './transcript.ts'
 
 export type Cache = {
   /** Bumped when FileState changes shape, so an old cache is read from scratch. */
-  version: 2
+  version: 3
   files: Record<string, FileState>
   metas: Record<string, Meta>
   /** Session id to the path of its lead transcript. */
@@ -14,7 +14,7 @@ export type Cache = {
 }
 
 export function emptyCache(): Cache {
-  return { version: 2, files: {}, metas: {}, leads: {} }
+  return { version: 3, files: {}, metas: {}, leads: {} }
 }
 
 /** The cache folder may sit in a shared tmp, so only a real folder of ours that no one else can write to is trusted. */
@@ -34,7 +34,7 @@ export function loadCache(path: string): Cache {
   try {
     if (!ownsDir(dirname(path))) return emptyCache()
     const data = JSON.parse(readFileSync(path, 'utf8')) as Partial<Cache>
-    return data.version === 2 && data.files && data.metas && data.leads ? (data as Cache) : emptyCache()
+    return data.version === 3 && data.files && data.metas && data.leads ? (data as Cache) : emptyCache()
   } catch {
     return emptyCache()
   }

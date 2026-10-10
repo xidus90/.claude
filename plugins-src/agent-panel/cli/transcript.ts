@@ -9,6 +9,8 @@ type Usage = {
   cache_read_input_tokens?: unknown
   cache_creation_input_tokens?: unknown
   cache_creation?: { ephemeral_5m_input_tokens?: unknown; ephemeral_1h_input_tokens?: unknown }
+  /** The turns of one message, an advisor call among them with a model of its own. */
+  iterations?: unknown
 }
 
 type Line = {
@@ -19,7 +21,8 @@ type Line = {
   message?: { id?: string; model?: unknown; stop_reason?: string | null; usage?: Usage; content?: unknown }
 }
 
-type Pending = { id: string; model: string; tokens: TokenCounts }
+/** Cost is null when a model of the message has no price. */
+type Pending = { id: string; model: string; tokens: TokenCounts; cost: number | null }
 
 export type FileState = {
   /** Bytes consumed, always just after a newline. */
@@ -66,9 +69,27 @@ function tokensOf(u: Usage): TokenCounts {
   }
 }
 
+// With an advisor call the top-level usage holds only the executor's turns, and its cache split only
+// the first one; the iterations hold every turn, each billed at its own model.
+function pendingOf(id: string, model: string, u: Usage): Pending {
+  const turns = Array.isArray(u.iterations)
+    ? u.iterations.filter((t): t is Usage & { model?: unknown } => typeof t === 'object' && t !== null)
+    : []
+  const parts = turns.length > 0
+    ? turns.map((t) => ({ model: typeof t.model === 'string' ? t.model : model, tokens: tokensOf(t) }))
+    : [{ model, tokens: tokensOf(u) }]
+  const costs = parts.map((p) => costOf(p.model, p.tokens))
+  return {
+    id,
+    model,
+    tokens: parts.reduce((n, p) => add(n, p.tokens), zero()),
+    cost: costs.some((c) => c === null) ? null : costs.reduce((n: number, c) => n + (c as number), 0),
+  }
+}
+
 function settle(s: FileState): FileState {
   if (!s.pending) return s
-  const cost = costOf(s.pending.model, s.pending.tokens)
+  const { cost } = s.pending
   return { ...s, done: add(s.done, s.pending.tokens), doneCost: s.doneCost + (cost ?? 0), unpriced: s.unpriced || cost === null, pending: null }
 }
 
@@ -85,7 +106,7 @@ function applyAssistant(s: FileState, line: Line): FileState {
   const model = typeof msg.model === 'string' ? msg.model : ''
   if (!msg.usage || model === '<synthetic>') return { ...s, hasAnswer, errorText: '' }
   const id = msg.id ?? ''
-  const next: Pending = { id, model, tokens: tokensOf(msg.usage) }
+  const next = pendingOf(id, model, msg.usage)
   const base = s.pending && id !== '' && s.pending.id === id ? s : settle(s)
   return { ...base, pending: next, model, hasAnswer, errorText: '' }
 }
@@ -139,7 +160,7 @@ export function readTranscript(path: string, prev: FileState): FileState {
 
 export function totals(s: FileState): { tokens: TokenCounts; costUsd: number; unpriced: boolean } {
   if (!s.pending) return { tokens: s.done, costUsd: s.doneCost, unpriced: s.unpriced }
-  const cost = costOf(s.pending.model, s.pending.tokens)
+  const { cost } = s.pending
   return { tokens: add(s.done, s.pending.tokens), costUsd: s.doneCost + (cost ?? 0), unpriced: s.unpriced || cost === null }
 }
 
