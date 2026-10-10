@@ -38,3 +38,15 @@ export type Summary = {
   unreadableLines: number
   problems: string[]
 }
+
+/** One session of the picker, read from the head and tail of its transcript. */
+export type SessionInfo = {
+  id: string
+  /** The config folder its transcript lives in, as passed to --config. */
+  config: string
+  project: string
+  title: string
+  cwd: string
+  lastAt: number
+  isLive: boolean
+}

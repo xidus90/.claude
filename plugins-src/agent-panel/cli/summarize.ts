@@ -5,6 +5,7 @@ import { parseArgs } from 'node:util'
 import { loadCache, saveCache } from './cache.ts'
 import { parseMeta, roleOf, taskOf, type Meta } from './classify.ts'
 import { agentFiles, findLead, findRun } from './scan.ts'
+import { configsOf, listSessions } from './sessions.ts'
 import { emptyState, endOf, readTranscript, totals, type FileState } from './transcript.ts'
 import type { AgentSummary, Summary } from '../shared/summary.ts'
 
@@ -92,18 +93,31 @@ export function summarize(o: Options): Summary {
   return { runId: run?.runId ?? null, generations, agents, unreadableLines, problems }
 }
 
-const USAGE = 'usage: summarize.ts --session <id> --cwd <dir> --config <dir> --cache <file>\n'
+const USAGE =
+  'usage: summarize.ts --session <id> --cwd <dir> --config <dir> --cache <file>\n' +
+  '       summarize.ts --list --home <dir> --config <dir>\n'
 
 export function main(argv: string[], write: (s: string) => void, fail: (s: string) => void): number {
-  let values: Partial<Options>
+  let values: Partial<Options> & { list?: boolean; home?: string }
   try {
     values = parseArgs({
       args: argv,
-      options: { session: { type: 'string' }, cwd: { type: 'string' }, config: { type: 'string' }, cache: { type: 'string' } },
+      options: {
+        session: { type: 'string' }, cwd: { type: 'string' }, config: { type: 'string' }, cache: { type: 'string' },
+        list: { type: 'boolean' }, home: { type: 'string' },
+      },
     }).values
   } catch {
     fail(USAGE)
     return 2
+  }
+  if (values.list) {
+    if (!values.home || !values.config) {
+      fail(USAGE)
+      return 2
+    }
+    write(JSON.stringify(listSessions(configsOf(values.home, values.config), Date.now())) + '\n')
+    return 0
   }
   const { session, cwd, config, cache } = values
   if (!session || !cwd || !config || !cache) {

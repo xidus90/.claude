@@ -1,7 +1,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildView, countsLine, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, sharesOf, startError, statusLine, dirsOf, toggle, visibleRows, moreLine, type ViewInput } from '../hooks/view.ts'
-import type { AgentSummary, Summary } from '../shared/summary.ts'
+import { buildView, countsLine, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, sharesOf, startError, statusLine, dirsOf, toggle, visibleRows, moreLine, sessionsOf, sessionLabel, listArgs, pickerOptions, isGone, type ViewInput } from '../hooks/view.ts'
+import type { AgentSummary, SessionInfo, Summary } from '../shared/summary.ts'
 
 const MIN = 60_000
 
@@ -16,7 +16,7 @@ function agent(p: Partial<AgentSummary>): AgentSummary {
 const lead = (p: Partial<AgentSummary>) => agent({ id: 'lead:s1', kind: 'lead', name: 'Lead', role: 'lead', task: '', model: 'claude-opus-5-5', ...p })
 
 function input(summary: Summary | null, p: Partial<ViewInput> = {}): ViewInput {
-  return { summary, live: [], reportedCostUsd: null, costIncludesAgents: true, now: 10 * MIN, error: '', ...p }
+  return { summary, live: [], reportedCostUsd: null, costIncludesAgents: true, now: 10 * MIN, error: '', foreign: null, ...p }
 }
 
 const team = (agents: AgentSummary[], generations = ['s1']): Summary => ({ runId: 'r1', generations, agents, unreadableLines: 0, problems: [] })
@@ -131,7 +131,7 @@ test('lists script errors, unreadable lines and problems as notices', () => {
 
 test('says it is loading before the first summary, and shows only the error if that failed', () => {
   assert.deepEqual(buildView(input(null)), {
-    title: 'Agents', totals: 'lade …', counts: '', notices: [], groups: [], status: { running: 0, done: 0, failed: 0, aborted: 0 },
+    title: 'Agents', subtitle: '', totals: 'lade …', counts: '', notices: [], groups: [], status: { running: 0, done: 0, failed: 0, aborted: 0 },
     overview: { cost: '≈ $0.00', tokens: '0', time: '0:00', shares: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, amounts: { input: '0', output: '0', cacheRead: '0', cacheWrite: '0' }, line: '', unpriced: '' },
   })
   assert.deepEqual(buildView(input(null, { error: 'node nicht gefunden: x' })).notices, ['⚠ node nicht gefunden: x'])
@@ -258,14 +258,14 @@ test('sorts an agent without a first time as if it started at zero', () => {
 })
 
 test('dirsOf prefers the Windows variables, falls back to POSIX, then to defaults', () => {
-  assert.deepEqual(dirsOf({ USERPROFILE: 'U', HOME: 'H', TEMP: 'T', TMPDIR: 'D' }), { config: 'U/.claude', tmp: 'T' })
-  assert.deepEqual(dirsOf({ HOME: 'H', TMPDIR: 'D' }), { config: 'H/.claude', tmp: 'D' })
-  assert.deepEqual(dirsOf({}), { config: '/.claude', tmp: '/tmp' })
+  assert.deepEqual(dirsOf({ USERPROFILE: 'U', HOME: 'H', TEMP: 'T', TMPDIR: 'D' }), { home: 'U', config: 'U/.claude', tmp: 'T' })
+  assert.deepEqual(dirsOf({ HOME: 'H', TMPDIR: 'D' }), { home: 'H', config: 'H/.claude', tmp: 'D' })
+  assert.deepEqual(dirsOf({}), { home: '', config: '/.claude', tmp: '/tmp' })
 })
 
 test('dirsOf takes the config folder Claude Code was started with', () => {
-  assert.deepEqual(dirsOf({ USERPROFILE: 'U', CLAUDE_CONFIG_DIR: 'C:/Users/u/.claude-b', TEMP: 'T' }), { config: 'C:/Users/u/.claude-b', tmp: 'T' })
-  assert.deepEqual(dirsOf({ USERPROFILE: 'U', CLAUDE_CONFIG_DIR: '', TEMP: 'T' }), { config: 'U/.claude', tmp: 'T' })
+  assert.deepEqual(dirsOf({ USERPROFILE: 'U', CLAUDE_CONFIG_DIR: 'C:/Users/u/.claude-b', TEMP: 'T' }), { home: 'U', config: 'C:/Users/u/.claude-b', tmp: 'T' })
+  assert.deepEqual(dirsOf({ USERPROFILE: 'U', CLAUDE_CONFIG_DIR: '', TEMP: 'T' }), { home: 'U', config: 'U/.claude', tmp: 'T' })
 })
 
 test('toggle adds a missing key and removes a present one', () => {
@@ -473,4 +473,74 @@ test('an agent whose role is named lead or agents gets its own card', () => {
 test('names Claude 3.x models by family and version, not by their date', () => {
   const v = buildView(input(plain([lead({}), agent({ id: 'h', model: 'claude-3-5-haiku-20241022' }), agent({ id: 's', model: 'claude-3-7-sonnet-20250219', firstAt: 1 }), agent({ id: 'o', model: 'claude-3-opus-20240229', firstAt: 2 })])))
   assert.deepEqual(v.groups.find((g) => g.key === 'agents')?.rows.map((r) => r.model), ['Haiku 3.5', 'Sonnet 3.7', 'Opus 3'])
+})
+
+const info = (p: Partial<SessionInfo>): SessionInfo => ({ id: 's2', config: 'C:/Users/u/.claude', project: 'repo', title: 'Agent-team fortsetzen', cwd: 'C:/repo', lastAt: 10 * MIN - 3 * MIN, isLive: false, ...p })
+
+test('labels a session with its state, title, project, age and account', () => {
+  const now = 10 * MIN
+  assert.equal(sessionLabel(info({ isLive: true, lastAt: now - 5000 }), now), '● Agent-team fortsetzen · repo · gerade eben')
+  assert.equal(sessionLabel(info({}), now), '○ Agent-team fortsetzen · repo · vor 3 min')
+  assert.equal(sessionLabel(info({ lastAt: now - 150 * MIN }), now), '○ Agent-team fortsetzen · repo · vor 2 h')
+  assert.equal(sessionLabel(info({ lastAt: now - 50 * 60 * MIN }), now), '○ Agent-team fortsetzen · repo · vor 2 d')
+  assert.equal(sessionLabel(info({ config: 'C:/Users/u/.claude-b' }), now), '○ Agent-team fortsetzen · repo · vor 3 min · b')
+  // A clock set back shows no negative age.
+  assert.equal(sessionLabel(info({ lastAt: now + 60_000 }), now), '○ Agent-team fortsetzen · repo · gerade eben')
+  const long = sessionLabel(info({ title: `a${String.fromCharCode(27)}[31m${'x'.repeat(10_000)}` }), now)
+  assert.ok(!long.includes(String.fromCharCode(27)))
+  assert.ok(long.length < 120, String(long.length))
+})
+
+test('cuts a label text on whole characters, never through an emoji', () => {
+  const label = sessionLabel(info({ title: `${'t'.repeat(59)}😀😀` }), 10 * MIN)
+  const title = label.slice(2, label.indexOf(' · '))
+  assert.equal([...title].length, 60)
+  assert.ok(title.endsWith('😀'))
+  assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(label))
+})
+
+test('offers this session first, then the listed ones, and keeps a picked one that left the list', () => {
+  const now = 10 * MIN
+  const a = info({ id: 'a' })
+  const b = info({ id: 'b' })
+  assert.deepEqual(pickerOptions([a, b], null, now).map((o) => o.value), ['', 'a', 'b'])
+  assert.equal(pickerOptions([], null, now)[0]?.label, 'Diese Sitzung')
+  assert.deepEqual(pickerOptions([a], b, now).map((o) => o.value), ['', 'b', 'a'])
+  assert.deepEqual(pickerOptions([a, b], b, now).map((o) => o.value), ['', 'a', 'b'])
+})
+
+test('tells when the picked session has no transcript any more', () => {
+  const gone = { ...plain([]), problems: ['kein Transkript für Sitzung s2'] }
+  assert.equal(isGone(gone, 's2'), true)
+  assert.equal(isGone(gone, 's3'), false)
+  assert.equal(isGone(null, 's2'), false)
+})
+
+test('accepts the --list output only in the shape the picker reads', () => {
+  const good = [info({})]
+  assert.deepEqual(sessionsOf({ exitCode: 0, stdout: JSON.stringify(good) }), good)
+  assert.equal(sessionsOf({ exitCode: 1, stdout: '[]' }), null)
+  assert.equal(sessionsOf({ exitCode: 0, stdout: 'nope' }), null)
+  assert.equal(sessionsOf({ exitCode: 0, stdout: '{}' }), null)
+  for (const bad of [null, { ...good[0], id: 5 }, { ...good[0], lastAt: 'x' }, { ...good[0], isLive: 'yes' }, { ...good[0], cwd: null }]) {
+    assert.equal(sessionsOf({ exitCode: 0, stdout: JSON.stringify([bad]) }), null)
+  }
+})
+
+test('builds the list call', () => {
+  assert.deepEqual(listArgs('P/cli/summarize.ts', 'C:/Users/u', 'C:/Users/u/.claude'), ['node', 'P/cli/summarize.ts', '--list', '--home', 'C:/Users/u', '--config', 'C:/Users/u/.claude'])
+})
+
+test('shows another session from its transcript only', () => {
+  const s = plain([lead({}), agent({ id: 'b', name: 'busy', end: 'open' })])
+  const idle = buildView(input(s, { foreign: { title: 'Agent-team fortsetzen', isLive: false }, reportedCostUsd: 99 }))
+  assert.equal(idle.title, 'Sitzung: Agent-team fortsetzen')
+  assert.equal(idle.subtitle, 'nur aus dem Transkript')
+  assert.equal(idle.groups.find((g) => g.key === 'lead')?.rows[0]?.glyph, '✓')
+  // The hook passes no reported cost for another session; even if one came, it would not be shown.
+  assert.ok(idle.notices.every((n) => !n.includes('Preistabelle')))
+  const busy = buildView(input(s, { foreign: { title: 'x', isLive: true } }))
+  assert.equal(busy.groups.find((g) => g.key === 'lead')?.rows[0]?.glyph, '●')
+  assert.equal(buildView(input(s)).subtitle, '')
+  assert.equal(buildView(input(null, { foreign: { title: 'y', isLive: false } })).subtitle, 'nur aus dem Transkript')
 })

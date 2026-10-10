@@ -295,3 +295,24 @@ test('runs as a script', () => {
   assert.equal(r.status, 0, r.stderr)
   assert.equal((JSON.parse(r.stdout) as Summary).agents[0]?.id, 'lead:s1')
 })
+
+test('lists the sessions of the own and the other config folders with --list', () => {
+  const w = world()
+  lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
+  const other = join(w.home, '.claude-b')
+  mkdirSync(join(other, 'projects', 'C--x'), { recursive: true })
+  writeFileSync(join(other, 'projects', 'C--x', 's2.jsonl'), JSON.stringify({ type: 'custom-title', customTitle: 'Zweites Konto' }) + '\n')
+  let out = ''
+  const code = main(['--list', '--home', w.home, '--config', w.config], (s) => (out += s), () => {})
+  assert.equal(code, 0)
+  const list = JSON.parse(out) as { id: string; title: string }[]
+  assert.deepEqual(list.map((s) => s.id).sort(), ['s1', 's2'])
+  assert.equal(list.find((s) => s.id === 's2')?.title, 'Zweites Konto')
+})
+
+test('refuses --list without a home or a config', () => {
+  let err = ''
+  assert.equal(main(['--list', '--home', 'h'], () => {}, (s) => (err += s)), 2)
+  assert.equal(main(['--list', '--config', 'c'], () => {}, () => {}), 2)
+  assert.match(err, /--list --home/)
+})

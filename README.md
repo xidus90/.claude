@@ -207,7 +207,9 @@ läuft. Das Terminal zeigt denselben Aufbau mit Blockzeichen. Übersicht,
 Agents und jede Rolle lassen sich einklappen; „Fertige ausblenden“ blendet
 erledigte Agents aus. Das Panel folgt dem hellen oder dunklen Theme von
 Claude Code und öffnet sich von selbst, wenn ein Team-Lauf startet oder
-mindestens drei Agents in 30 Sekunden starten.
+mindestens drei Agents in 30 Sekunden starten. Oben rechts wählt ein Dropdown
+eine der 20 zuletzt aktiven Sitzungen beider Konten (● läuft); das Panel zeigt
+sie dann aus ihrem Transkript, ohne Live-Werte.
 
 Die Kosten sind eine Schätzung aus Tokens und einer Preistabelle
 (`cli/price.ts`), kein Abrechnungswert. Weicht die Summe der laufenden Sitzung
