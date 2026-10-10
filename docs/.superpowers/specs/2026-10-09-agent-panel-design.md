@@ -127,7 +127,8 @@ Plugin-Verzeichnis, das ein Update ersetzt. Fehlt oder ist sie unlesbar, liest
 das Skript von vorn. Der Ordner wird mit Modus 0700 angelegt; einen vorhandenen nutzt
 das Skript nur, wenn er ein echter Ordner (kein Link) ist und — unter POSIX —
 dem aktuellen Nutzer gehört und Gruppe und Andere nicht darin schreiben dürfen.
-Sonst liest und schreibt es keinen Cache und fasst trotzdem zusammen. Geschrieben
+Sonst — auch wenn an der Stelle eine Datei oder ein ins Leere zeigender Link
+liegt — liest und schreibt es keinen Cache und fasst trotzdem zusammen. Geschrieben
 wird über eine Temp-Datei mit zufälligem Namen, die exklusiv (`wx`, Modus 0600)
 angelegt und dann umbenannt wird.
 

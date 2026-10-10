@@ -38,15 +38,16 @@ function victimIn(dir: string): string {
   return victim
 }
 
-test('does not write through a link planted at the temp name of an earlier version', () => {
+test('does not write through a link planted at a predictable temp name, and still saves', () => {
   const victim = victimIn(tempDir())
   const dir = join(tempDir(), 'agent-panel')
   mkdirSync(dir)
   const path = join(dir, 's1.json')
+  const cache = { ...emptyCache(), leads: { s1: 'lead.jsonl' } }
   linkSync(victim, `${path}.${process.pid}.tmp`)
-  saveCache(path, emptyCache())
+  saveCache(path, cache)
   assert.equal(readFileSync(victim, 'utf8'), 'precious')
-  assert.deepEqual(loadCache(path), emptyCache())
+  assert.deepEqual(loadCache(path), cache)
 })
 
 test('creates the temp file exclusively, so an existing name is never written to', () => {
@@ -59,18 +60,32 @@ test('creates the temp file exclusively, so an existing name is never written to
   assert.equal(readFileSync(victim, 'utf8'), 'precious')
 })
 
-test('names the temp file differently on every save', () => {
+test('names the temp file with a fresh random id on every save', () => {
   const dir = join(tempDir(), 'agent-panel')
-  const names: string[] = []
-  const suffix = () => {
-    const name = `n${names.length}`
-    names.push(name)
-    return name
-  }
-  saveCache(join(dir, 's1.json'), emptyCache(), suffix)
-  saveCache(join(dir, 's1.json'), emptyCache(), suffix)
-  assert.deepEqual(names, ['n0', 'n1'])
-  assert.deepEqual(readdirSync(dir), ['s1.json'])
+  // A folder at the target makes the final rename fail, so each save leaves its temp file to be counted.
+  mkdirSync(join(dir, 's1.json'), { recursive: true })
+  for (let i = 0; i < 2; i++) assert.throws(() => saveCache(join(dir, 's1.json'), emptyCache()))
+  const temps = readdirSync(dir).filter((name) => name !== 's1.json')
+  assert.equal(temps.length, 2)
+  for (const name of temps) assert.match(name, /^s1\.json\.[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.tmp$/)
+})
+
+test('saves nothing and reads nothing where a file sits at the folder path', () => {
+  const root = tempDir()
+  writeFileSync(join(root, 'agent-panel'), 'not a folder')
+  const path = join(root, 'agent-panel', 's1.json')
+  saveCache(path, emptyCache())
+  assert.deepEqual(loadCache(path), emptyCache())
+  assert.equal(readFileSync(join(root, 'agent-panel'), 'utf8'), 'not a folder')
+})
+
+test('saves nothing and reads nothing where a link to nowhere sits at the folder path', () => {
+  const root = tempDir()
+  symlinkSync(join(root, 'gone'), join(root, 'agent-panel'), 'junction')
+  const path = join(root, 'agent-panel', 's1.json')
+  saveCache(path, emptyCache())
+  assert.deepEqual(loadCache(path), emptyCache())
+  assert.deepEqual(readdirSync(root), ['agent-panel'])
 })
 
 test('neither saves into nor loads from a folder that is a link', () => {

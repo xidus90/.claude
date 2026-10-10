@@ -234,13 +234,25 @@ test('main prints one JSON line and returns 0', () => {
   assert.equal((JSON.parse(out) as Summary).agents.length, 1)
 })
 
+test('main summarizes in full when a file sits where the cache folder should be', () => {
+  const w = world()
+  lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
+  let out = ''
+  const root = tempDir()
+  writeFileSync(join(root, 'agent-panel'), '')
+  const code = main(['--session', 's1', '--cwd', w.repo, '--home', w.home, '--cache', join(root, 'agent-panel', 's.json')], (s) => (out += s), () => {})
+  const s = JSON.parse(out) as Summary
+  assert.equal(code, 0)
+  assert.deepEqual([s.agents.map((a) => a.id), s.problems], [['lead:s1'], []])
+})
+
 test('main reports a failure inside the summary and still returns 0', () => {
   const w = world()
   lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
   let out = ''
-  const blocked = join(tempDir(), 'file-not-dir')
-  writeFileSync(blocked, '')
-  const code = main(['--session', 's1', '--cwd', w.repo, '--home', w.home, '--cache', join(blocked, 'c.json')], (s) => (out += s), () => {})
+  // A folder at the cache path lets the cache be read as empty but makes the final rename fail.
+  mkdirSync(w.cache, { recursive: true })
+  const code = main(['--session', 's1', '--cwd', w.repo, '--home', w.home, '--cache', w.cache], (s) => (out += s), () => {})
   const s = JSON.parse(out) as Summary
   assert.equal(code, 0)
   assert.deepEqual([s.generations, s.agents], [['s1'], []])

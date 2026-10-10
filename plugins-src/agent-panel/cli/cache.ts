@@ -42,7 +42,12 @@ export function loadCache(path: string): Cache {
 
 export function saveCache(path: string, cache: Cache, suffix: () => string = randomUUID): void {
   const dir = dirname(path)
-  mkdirSync(dir, { recursive: true, mode: 0o700 })
+  try {
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
+  } catch {
+    // Something that is not a folder sits at the path; like any untrusted folder, it gets no cache.
+    return
+  }
   if (!ownsDir(dir)) return
   // A rename replaces the file whole, so a reader never sees half of it. 'wx' fails on an existing
   // name instead of following a link planted there.
