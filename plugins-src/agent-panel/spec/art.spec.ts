@@ -105,9 +105,22 @@ test('builds a block bar of the given width from shares', () => {
   assert.deepEqual(blockBar([{ share: 1, color: '#111111' }], 2, '#999999'), [{ text: '▄▄', color: '#111111' }])
 })
 
-test('leaves out block bar parts that round to no cell and clips the rest to the width', () => {
+test('gives every block bar part above zero a cell, taken from the widest, within the width', () => {
   const bar = blockBar([{ share: 0, color: '#111111' }, { share: 0.01, color: '#222222' }, { share: 0.9, color: '#333333' }, { share: 0.5, color: '#444444' }], 4, '#999999')
-  assert.deepEqual(bar, [{ text: '▄▄▄▄', color: '#333333' }])
+  assert.deepEqual(bar, [{ text: '▄', color: '#222222' }, { text: '▄▄', color: '#333333' }, { text: '▄', color: '#444444' }])
+  // The lead of a real session: 8 in, 263 out, 158k cache read, 33k cache write.
+  const lead = blockBar([{ share: 0.00004, color: 'in' }, { share: 0.0014, color: 'out' }, { share: 0.827, color: 'read' }, { share: 0.171, color: 'write' }], 60, 'track')
+  assert.deepEqual(lead.map((s) => [s.color, s.text.length]), [['in', 1], ['out', 1], ['read', 48], ['write', 10]])
+  // A tiny part beside a short track takes the track's cell first.
+  assert.deepEqual(blockBar([{ share: 0.01, color: 'a' }, { share: 0.5, color: 'b' }], 4, 't').map((s) => [s.color, s.text.length]), [['a', 1], ['b', 2], ['t', 1]])
+  // No more parts than cells: a part that finds no cell left to take stays out.
+  assert.deepEqual(blockBar([{ share: 0.5, color: 'a' }, { share: 0.25, color: 'b' }, { share: 0.25, color: 'c' }], 2, 't').map((s) => s.color), ['a', 'b'])
+})
+
+test('draws every SVG bar part above zero at least a terminal cell wide', () => {
+  const svg = stripeSvg(LIGHT, { input: 0.0001, output: 0, cacheRead: 0.9, cacheWrite: 0.0999 }, 6)
+  assert.match(svg, new RegExp(`<rect x="0" y="0" width="4" height="6" fill="#8f8cf4"/>`))
+  assert.doesNotMatch(svg, /fill="#5fbf8f"/)
 })
 
 const cells = (bar: { text: string; color: string }[], color: string): number => bar.filter((s) => s.color === color).reduce((n, s) => n + s.text.length, 0)

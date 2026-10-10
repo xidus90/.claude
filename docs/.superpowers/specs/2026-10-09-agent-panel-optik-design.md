@@ -70,7 +70,7 @@ Gelesen am 2026-10-09 in `.claude-plugin/types/claude-code/index.d.ts`
 Gemischt (Ansatz 1): Das Gerüst bleibt aus `Box`, `Text` und `Button`
 (Überschriften, Klapp-Knöpfe, Agent-Zeilen). Die grafischen Stücke —
 Kacheln, Token-Streifen, Status-Balken, Kostenbalken, Krabben — zeichnet in
-der Desktop-App je ein kleines `Svg`, im Terminal eine Blockzeichen-Fassung (Balken aus unteren Halbblöcken `▄`, eine halbe Zeile hoch)
+der Desktop-App je ein kleines `Svg`, im Terminal eine Blockzeichen-Fassung (Balken aus unteren Halbblöcken `▄`, eine halbe Zeile hoch). Ein Anteil über null bekommt in jedem Balken mindestens eine Zelle (im SVG ein Achtzigstel der Breite), auch wenn er darauf abgerundet würde; die Zelle geht von der Spur, sonst vom breitesten Anteil ab
 bzw. ein `Raster`. Alle Zeichnungen erzeugen reine Funktionen, die mit Node
 getestet werden.
 

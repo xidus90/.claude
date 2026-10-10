@@ -13,6 +13,7 @@ export const tokenColors = (p: Palette): Record<keyof Shares, string> => ({ inpu
 const COST_COLOR = '#8f8cf4'
 
 export const SVG_W = 320
+const MIN_PART = SVG_W / 80
 export const SVG_LIMIT = 131_072
 
 export function paletteOf(theme: unknown): Palette {
@@ -73,7 +74,8 @@ function segments(parts: BarPart[], height: number, track: string): string {
   let body = `<rect x="0" y="0" width="${SVG_W}" height="${height}" rx="${height / 2}" fill="${track}"/>`
   for (const part of parts) {
     if (part.share <= 0) continue
-    const w = part.share * SVG_W
+    // As in the terminal, a part above zero stays visible: at least a cell's width of an 80-column bar.
+    const w = Math.max(part.share * SVG_W, MIN_PART)
     body += `<rect x="${x}" y="0" width="${w}" height="${height}" fill="${part.color}"/>`
     x += w
   }
@@ -109,19 +111,33 @@ export function crabSvg(costume: string, isRunning: boolean): string {
 export type Segment = { text: string; color: string }
 
 export function blockBar(parts: BarPart[], width: number, track: string): Segment[] {
-  const out: Segment[] = []
+  const cells = parts.map(() => 0)
   let used = 0
   let sum = 0
   // A lower half block draws the bar half a line high, the track in its own color.
-  // Round the running total, not each part: shares summing to one fill the bar and a part worth a whole cell keeps one,
-  // while a part below a cell may still get none. The nudge lifts sums a float short of an exact half (5.499…) over it.
-  for (const part of parts) {
+  // Round the running total, not each part: shares summing to one fill the bar and a part worth a whole cell keeps one.
+  // The nudge lifts sums a float short of an exact half (5.499…) over it.
+  parts.forEach((part, i) => {
     sum += part.share
     const n = Math.min(width, Math.round(sum * width + 1e-9)) - used
-    if (n <= 0) continue
-    out.push({ text: '▄'.repeat(n), color: part.color })
+    if (n <= 0) return
+    cells[i] = n
     used += n
-  }
+  })
+  // A part above zero that rounded to no cell still shows: it takes a cell of the track, else one of the widest part.
+  parts.forEach((part, i) => {
+    if (part.share <= 0 || cells[i] !== 0) return
+    if (used < width) {
+      cells[i] = 1
+      used += 1
+      return
+    }
+    const widest = cells.indexOf(Math.max(...cells))
+    if ((cells[widest] as number) < 2) return
+    cells[widest] = (cells[widest] as number) - 1
+    cells[i] = 1
+  })
+  const out: Segment[] = parts.flatMap((part, i) => (cells[i] ? [{ text: '▄'.repeat(cells[i] as number), color: part.color }] : []))
   if (used < width) out.push({ text: '▄'.repeat(width - used), color: track })
   return out
 }
