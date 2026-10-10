@@ -210,8 +210,11 @@ Describe 'Get-LiveLead' {
     It 'finds a process started with one of the session ids, and nothing for none' {
         $id = [guid]::NewGuid().ToString()
         $pwsh = (Get-Command pwsh -CommandType Application | Select-Object -First 1).Source
-        $process = Start-Process -FilePath $pwsh -ArgumentList '-NoProfile', '-Command', 'Start-Sleep 60', '--session-id', $id -PassThru -WindowStyle Hidden
+        # The marker sits behind a comment sign: the child sleeps, and its command line still names the session.
+        $process = Start-Process -FilePath $pwsh -ArgumentList '-NoProfile', '-Command', 'Start-Sleep', '60', '#', '--session-id', $id -PassThru -WindowStyle Hidden
         try {
+            Start-Sleep -Milliseconds 500
+            $process.HasExited | Should -BeFalse
             @(Get-LiveLead -Sessions @('other', $id)) | Should -Contain $process.Id
             @(Get-LiveLead -Sessions @([guid]::NewGuid().ToString())) | Should -HaveCount 0
             @(Get-LiveLead -Sessions @()) | Should -HaveCount 0

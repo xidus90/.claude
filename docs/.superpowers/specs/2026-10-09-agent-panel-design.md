@@ -178,7 +178,12 @@ Agents · Lauf 20261009-113117 (Gen 1–2)
   steht in einer Detailzeile, die ein Druck auf die Agent-Zeile auf- und
   zuklappt, auf beiden Oberflächen gleich (`in 68 · out 3.5k · read 1.4M ·
   write 163k/0`, Cache-Write als 5m/1h).
-- **Kosten** = Σ Token-Art × Preis des Modells der jeweiligen Nachricht.
+- **Kosten** = Σ Token-Art × Preis des Modells der jeweiligen Nachricht. Ruft
+  eine Nachricht den Advisor, enthält ihre oberste `usage` nur die eigenen
+  Durchläufe; alle stehen in `usage.iterations`, der Advisor mit eigenem
+  `model`. Dann zählt jeder Durchlauf mit seinen Tokens zum Preis seines
+  Modells. Die gemerkte Nachricht der Cache-Datei trägt dafür ihre Kosten
+  (Cache-Version 3).
 - **Dauer je Agent** = erste bis letzte Nachricht; läuft er, bis jetzt.
 - **Zeit im Kopf** = Summe über die Generationen; je Generation die Wanduhr
   vom frühesten Start bis zum spätesten Ende (oder jetzt) ihres Leads und
