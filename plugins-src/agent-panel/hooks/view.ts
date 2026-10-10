@@ -28,6 +28,7 @@ export type ViewInput = {
 }
 
 const MISMATCH = 0.1
+const MAX_TEXT = 100
 
 const LIVE: Record<string, Glyph> = { completed: '✓', failed: '✗', killed: '✗' }
 const COLORS: Record<Glyph, string> = { '●': 'cyan', '✓': 'green', '✗': 'red', '⊘': 'yellow' }
@@ -113,10 +114,23 @@ function noteOf(a: AgentSummary, glyph: Glyph): string {
   return glyph === '⊘' ? 'abgebrochen' : ''
 }
 
+// The host refuses a whole tree for one control character in a text, and a line break would split a row.
+function tidy(text: string): string {
+  const flat = text.replace(/[\s\p{Cc}]+/gu, ' ').trim()
+  const chars = [...flat]
+  return chars.length > MAX_TEXT ? `${chars.slice(0, MAX_TEXT - 1).join('')}…` : flat
+}
+
+const tidyAgent = (a: AgentSummary): AgentSummary =>
+  ({ ...a, name: tidy(a.name), role: tidy(a.role), task: tidy(a.task), model: tidy(a.model), effort: tidy(a.effort), errorText: tidy(a.errorText) })
+
 export function buildView(input: ViewInput): View {
-  const notices = input.error ? [`⚠ ${input.error}`] : []
-  const s = input.summary
-  if (!s) return { title: 'Agents', totals: input.error ? '' : 'lade …', counts: '', notices, groups: [], status: noCounts(), overview: emptyOverview() }
+  // Every text the summary or the script brings in is cleaned here, so nothing below needs to be.
+  const error = tidy(input.error)
+  const notices = error ? [`⚠ ${error}`] : []
+  const raw = input.summary
+  const s = raw && { ...raw, runId: raw.runId === null ? null : tidy(raw.runId), agents: raw.agents.map(tidyAgent), problems: raw.problems.map(tidy) }
+  if (!s) return { title: 'Agents', totals: error ? '' : 'lade …', counts: '', notices, groups: [], status: noCounts(), overview: emptyOverview() }
   if (s.unreadableLines > 0) notices.push(`⚠ ${s.unreadableLines} Zeilen unlesbar`)
   for (const p of s.problems) notices.push(`⚠ ${p}`)
 

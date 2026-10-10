@@ -269,3 +269,74 @@ test('hides finished rows on request', () => {
   assert.deepEqual(visibleRows(g, false).map((r) => r.label), ['r', 'a'])
   assert.deepEqual(visibleRows(g, true).map((r) => r.label), ['r'])
 })
+
+// What the host refuses in a text, and what splits a row into two lines.
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u{2028}\u{2029}]/u
+const DIRTY = 'a\u001b[2J\r\n\tb\u0007\u0085c\u{2028}d'
+const CLEAN = 'a [2J b c d'
+
+test('cleans control characters and line breaks out of the label of a team row and a plain row', () => {
+  const t = buildView(input(team([lead({}), agent({ task: 'impl \u001b[2J\nT1' })])))
+  assert.equal(t.groups[1]?.rows[0]?.label, 'impl [2J T1')
+  const p = buildView(input(plain([lead({}), agent({ name: DIRTY })])))
+  assert.equal(p.groups[1]?.rows[0]?.label, CLEAN)
+})
+
+test('cleans a model id that names no known family, and the effort', () => {
+  const v = buildView(input(plain([lead({}), agent({ model: 'x\u001b]0;title\u0007', effort: '\u001b[31mhigh\r\nX' })])))
+  const row = v.groups[1]?.rows[0] ?? assert.fail()
+  assert.equal(row.model, 'x ]0;title')
+  assert.equal(row.effort, '[31mhigh X')
+  assert.equal(row.meta, 'x ]0;title · [31mhigh X · $0.50 · ⏱ 1:00')
+})
+
+test('cleans the error text that becomes the note', () => {
+  const v = buildView(input(plain([lead({}), agent({ end: 'error', errorText: 'boom\u001b[2J\r\nY' })])))
+  const row = v.groups[1]?.rows[0] ?? assert.fail()
+  assert.equal(row.note, 'boom [2J Y')
+  assert.equal(row.meta, 'Sonnet 5.5 · medium · boom [2J Y')
+  assert.equal(rowLine(row), 'impl-T1  Sonnet 5.5  $0.50  3k  1:00  boom [2J Y')
+})
+
+test('cleans a role into its group title, key and role', () => {
+  const v = buildView(input(team([lead({}), agent({ role: 'rev\u001b[31m\nx' })])))
+  const g = v.groups.find((x) => x.key !== 'lead') ?? assert.fail()
+  assert.equal(g.title, 'rev [31m x')
+  assert.equal(g.key, 'rev [31m x')
+  assert.equal(g.role, 'rev [31m x')
+})
+
+test('cleans the run id, the script error and the problems', () => {
+  const s = { ...team([lead({})]), runId: 'r\n1', problems: ['kann x\u001b nicht lesen:\r\ny'] }
+  const v = buildView(input(s, { error: 'summarize exit 1:\nboom\u0007' }))
+  assert.equal(v.title, 'Lauf r 1')
+  assert.deepEqual(v.notices, ['⚠ summarize exit 1: boom', '⚠ kann x nicht lesen: y'])
+  assert.equal(buildView(input(null, { error: 'a\nb' })).notices[0], '⚠ a b')
+})
+
+test('shows no error line when the error holds nothing but control characters', () => {
+  const v = buildView(input(null, { error: '\u001b\n' }))
+  assert.deepEqual(v.notices, [])
+  assert.equal(v.totals, 'lade …')
+})
+
+test('leaves no control character in any text of the view', () => {
+  const v = buildView(input(team([
+    lead({}),
+    agent({ id: 'f', task: DIRTY, model: DIRTY, effort: DIRTY, end: 'error', errorText: DIRTY }),
+    agent({ id: 'd', role: DIRTY, task: DIRTY, model: DIRTY, effort: DIRTY }),
+  ]), { error: DIRTY }))
+  const texts = [v.title, v.totals, v.counts, ...v.notices]
+  for (const g of v.groups) {
+    texts.push(g.title, g.key, g.role, groupLine(g, false))
+    for (const r of g.rows) texts.push(r.label, r.model, r.effort, r.note, r.meta, rowLine(r), detailLine(r))
+  }
+  for (const text of texts) assert.doesNotMatch(text, CONTROL, JSON.stringify(text))
+})
+
+test('caps a long text by code points, so a pair of surrogates is never cut in two', () => {
+  const v = buildView(input(plain([lead({}), agent({ name: '😀'.repeat(300) }), agent({ id: 'b', name: 'x'.repeat(100) })])))
+  const [long, exact] = (v.groups[1]?.rows ?? []).map((r) => r.label)
+  assert.equal(long, `${'😀'.repeat(99)}…`)
+  assert.equal(exact, 'x'.repeat(100))
+})
