@@ -246,12 +246,23 @@ test('main summarizes in full when a file sits where the cache folder should be'
   assert.deepEqual([s.agents.map((a) => a.id), s.problems], [['lead:s1'], []])
 })
 
+test('keeps the summary and adds a problem line when the cache cannot be written', () => {
+  const w = world()
+  lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
+  // A folder at the cache path lets the cache be read as empty but makes the final rename fail.
+  mkdirSync(w.cache, { recursive: true })
+  const s = summarize(opts(w, 's1'))
+  assert.deepEqual(s.agents.map((a) => a.id), ['lead:s1'])
+  assert.equal(s.problems.length, 1)
+  assert.match(s.problems[0] ?? '', /^Cache nicht gespeichert: /)
+})
+
 test('main reports a failure inside the summary and still returns 0', () => {
   const w = world()
   lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
   let out = ''
-  // A folder at the cache path lets the cache be read as empty but makes the final rename fail.
-  mkdirSync(w.cache, { recursive: true })
+  // A file where the run folder should be makes the run lookup throw.
+  writeFileSync(join(w.repo, '.team-runs'), '')
   const code = main(['--session', 's1', '--cwd', w.repo, '--home', w.home, '--cache', w.cache], (s) => (out += s), () => {})
   const s = JSON.parse(out) as Summary
   assert.equal(code, 0)

@@ -83,7 +83,12 @@ export function summarize(o: Options): Summary {
       agents.push(toSummary(src, sessionId, state, src.meta === null ? null : metaOf(src.meta, cache.metas)))
     }
   }
-  saveCache(o.cache, cache)
+  try {
+    saveCache(o.cache, cache)
+  } catch (err) {
+    // The cache only saves work, so the numbers just read are still worth showing.
+    problems.push(`Cache nicht gespeichert: ${(err as Error).message}`)
+  }
   return { runId: run?.runId ?? null, generations, agents, unreadableLines, problems }
 }
 
