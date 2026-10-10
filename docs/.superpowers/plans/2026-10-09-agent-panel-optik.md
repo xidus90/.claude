@@ -587,7 +587,7 @@ test('packs the crab into a 15×7 raster of half blocks', () => {
 })
 
 test('uses a lower half block where only the bottom pixel is set', () => {
-  // The legs end on an odd sampled row, so some cells carry only their lower pixel.
+  // The body's top edge and the claws begin on a cell's lower sampled row, so those cells carry only their lower pixel.
   const words = new Uint32Array(Uint8Array.from(atob(crabRaster('plain').cells), (ch) => ch.charCodeAt(0)).buffer)
   const chars: number[] = []
   for (let i = 0; i < words.length; i += 3) chars.push(words[i] as number)
