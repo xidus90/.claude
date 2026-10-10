@@ -136,7 +136,7 @@ function summaryWithBadMeta(file: object, cached?: object): Summary {
   if (cached) {
     const metas = { [join(subagentsDir(l), 'agent-a1.meta.json')]: cached }
     mkdirSync(dirname(w.cache), { recursive: true })
-    writeFileSync(w.cache, JSON.stringify({ version: 3, files: {}, metas, leads: {} }))
+    writeFileSync(w.cache, JSON.stringify({ version: 4, files: {}, metas, leads: {} }))
   }
   return summarize(opts(w, 's1'))
 }

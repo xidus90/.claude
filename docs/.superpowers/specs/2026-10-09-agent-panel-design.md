@@ -183,7 +183,7 @@ Agents · Lauf 20261009-113117 (Gen 1–2)
   Durchläufe; alle stehen in `usage.iterations`, der Advisor mit eigenem
   `model`. Dann zählt jeder Durchlauf mit seinen Tokens zum Preis seines
   Modells. Die gemerkte Nachricht der Cache-Datei trägt dafür ihre Kosten
-  (Cache-Version 3).
+  (Cache-Version 4).
 - **Dauer je Agent** = erste bis letzte Nachricht; läuft er, bis jetzt.
 - **Zeit im Kopf** = Summe über die Generationen; je Generation die Wanduhr
   vom frühesten Start bis zum spätesten Ende (oder jetzt) ihres Leads und
@@ -197,7 +197,7 @@ Agents · Lauf 20261009-113117 (Gen 1–2)
 | Glyphe | Bedeutung | Quelle laufende Sitzung | Quelle frühere Generation |
 |---|---|---|---|
 | ● | läuft (auch `pending`, `waiting`, `idle`) | `$.agent.list()` | — |
-| ✓ | fertig | `completed` | mindestens eine abgeschlossene Antwort (`stop_reason: end_turn`), und die letzte Assistant-Zeile ist kein API-Fehler |
+| ✓ | fertig | `completed` | mindestens eine abgeschlossene Antwort (`stop_reason: end_turn`, oder ein Aufruf von `SubagentHandback`, mit dem ein Subagent seinen Bericht abgibt), und die letzte Assistant-Zeile ist kein API-Fehler |
 | ✗ | gescheitert | `failed`, `killed` | die letzte Assistant-Zeile ist ein API-Fehler (`isApiErrorMessage`) |
 | ⊘ | abgebrochen | — | keine einzige abgeschlossene Antwort und kein API-Fehler am Ende |
 

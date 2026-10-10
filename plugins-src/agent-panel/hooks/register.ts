@@ -239,7 +239,8 @@ export const register: Register = (on) => {
         ...(isAgentsOpen ? [
           bar('status', 'Statusverteilung', statusParts(v.status), statusSvg(palette, v.status), barCells),
           Text({ dimColor: true, children: [statusLine(v.status)] }),
-          ...v.groups.map(group),
+          // A line of space between the role cards.
+          Box({ key: 'cards', flexDirection: 'column', rowGap: 1, children: v.groups.map(group) }),
         ] : []),
       ] })
     } catch (err) {
