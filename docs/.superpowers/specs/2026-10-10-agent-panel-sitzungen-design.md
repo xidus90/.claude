@@ -54,7 +54,7 @@ Die Dateien unter `subagents/` sind keine Sitzungen und fehlen in der Liste.
 | Datei | Aufgabe |
 |---|---|
 | `hooks/view.ts` | `sessionsOf(json)`: prüft die Ausgabe von `--list` auf Typen wie `summaryOf`. `sessionLabel(s, now)`: der Eintrag. `buildView` bekommt `foreign: { title } \| null`: bei einer fremden Sitzung Titel „Sitzung: <Titel>“, Hinweis „nur aus dem Transkript“, keine „gemeldet“-Werte, keine Warnung „Preistabelle prüfen“, Lauf-Status des Leads aus `isLive`. |
-| `hooks/register.ts` | Zustand: Liste und gewählte Sitzung (Vorgabe „Diese Sitzung“). Lädt die Liste nur bei offenem Panel, beim Öffnen und dann alle 10 s. Der Takt fasst die gewählte Sitzung mit ihrer ID, ihrem Konfigurationsordner und ihrem `cwd` zusammen; `$.agent.list()` und `$.session.usage()` gelten nur für die eigene. Das `Select` (Schlüssel `session`) steht rechts in der Titelzeile, unter 70 Spalten in einer eigenen Zeile darunter. Keine eigene Logik. |
+| `hooks/register.ts` | Zustand: Liste und gewählte Sitzung (Vorgabe „Diese Sitzung“). Lädt die Liste nur bei offenem Panel, beim Öffnen und dann alle 10 s. Der Takt fasst die gewählte Sitzung mit ihrer ID, ihrem Konfigurationsordner und ihrem `cwd` zusammen; `$.agent.list()` und `$.session.usage()` gelten nur für die eigene. Das `Select` (Schlüssel `session`) steht in einer eigenen Zeile unter dem Titel, rechtsbündig: Die Beschriftung einer gewählten Sitzung ist breiter als der Platz neben dem Titel. Der Titel im Eintrag wird auf 40 Zeichen gekürzt. Keine eigene Logik. |
 
 Die Öffnungsregeln (Team-Start, Schwarm) gelten weiter nur für die eigene
 Sitzung.

@@ -1,6 +1,6 @@
-export type Meta = { name?: string; description?: string; agentType?: string; customAgentType?: string }
+export type Meta = { name?: string; description?: string; agentType?: string; customAgentType?: string; teamName?: string }
 
-const META_FIELDS = ['name', 'description', 'agentType', 'customAgentType'] as const
+const META_FIELDS = ['name', 'description', 'agentType', 'customAgentType', 'teamName'] as const
 
 // A meta file is hand-editable JSON: a field counts only when it is a string.
 export function parseMeta(raw: unknown): Meta {

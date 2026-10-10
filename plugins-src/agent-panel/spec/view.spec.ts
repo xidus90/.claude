@@ -497,9 +497,10 @@ test('labels a session with its state, title, project, age and account', () => {
 })
 
 test('cuts a label text on whole characters, never through an emoji', () => {
-  const label = sessionLabel(info({ title: `${'t'.repeat(59)}😀😀` }), 10 * MIN)
+  const label = sessionLabel(info({ title: `${'t'.repeat(39)}😀😀` }), 10 * MIN)
   const title = label.slice(2, label.indexOf(' · '))
-  assert.equal([...title].length, 60)
+  // The picker shows 40 characters of a title, so a long one still fits its row.
+  assert.equal([...title].length, 40)
   assert.ok(title.endsWith('😀'))
   assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(label))
 })

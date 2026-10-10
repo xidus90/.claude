@@ -15,9 +15,9 @@ test('starts empty when the file is missing, unreadable or of another version', 
   assert.deepEqual(loadCache(join(dir, 'old.json')), emptyCache())
   writeFileSync(join(dir, 'v1.json'), JSON.stringify({ version: 1, files: { 'a.jsonl': emptyState() }, metas: {}, leads: { s1: 'lead.jsonl' } }))
   assert.deepEqual(loadCache(join(dir, 'v1.json')), emptyCache())
-  writeFileSync(join(dir, 'part.json'), JSON.stringify({ version: 4, files: {} }))
+  writeFileSync(join(dir, 'part.json'), JSON.stringify({ version: 5, files: {} }))
   assert.deepEqual(loadCache(join(dir, 'part.json')), emptyCache())
-  writeFileSync(join(dir, 'noleads.json'), JSON.stringify({ version: 4, files: {}, metas: {} }))
+  writeFileSync(join(dir, 'noleads.json'), JSON.stringify({ version: 5, files: {}, metas: {} }))
   assert.deepEqual(loadCache(join(dir, 'noleads.json')), emptyCache())
 })
 

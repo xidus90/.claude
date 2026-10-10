@@ -265,7 +265,7 @@ export const register: Register = (on) => {
       const amount = (color: string, name: string, value: string) => Box({ flexDirection: 'row', children: [
         Text({ color, children: ['■ '] }), Text({ dimColor: true, children: [`${name} `] }), Text({ bold: true, children: [value] }),
       ] })
-      // The picker sits beside the title in a wide pane, on a row of its own in a narrow one.
+      // The session picker gets a row of its own under the title.
       // A surface without a Select (mobile) shows the title alone.
       const table = $.ui.resolve(e)
       const picker = 'Select' in table
@@ -282,9 +282,9 @@ export const register: Register = (on) => {
             Text({ bold: true, wrap: 'truncate-end', children: [v.title] }),
             ...(v.gens ? [Text({ dimColor: true, wrap: 'truncate-end', children: [` · ${v.gens}`] })] : []),
           ] }),
-          ...(isWide ? [Box({ key: 'picker-slot', flexShrink: 0, children: picker })] : []),
         ] }),
-        ...(isWide ? [] : picker),
+        // Its own row: a picked session's label is wider than the room beside the title.
+        ...(picker.length ? [Box({ key: 'picker-row', flexDirection: 'row', justifyContent: 'flex-end', children: picker })] : []),
         ...(v.subtitle ? [Text({ dimColor: true, children: [v.subtitle] })] : []),
         ...v.notices.map((n) => Text({ color: 'warning', wrap: 'truncate-end', children: [n] })),
         heading('sec-overview', isOverviewOpen, 'Übersicht', [Text({ dimColor: true, children: [v.overview.line] })], () => { isOverviewOpen = !isOverviewOpen; redraw() }),

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { parseMeta, roleOf, taskOf } from '../cli/classify.ts'
 
 test('keeps only the string fields of a meta file', () => {
-  assert.deepEqual(parseMeta({ name: 'a', description: 'b', agentType: 'c', customAgentType: 'd', other: 'e' }), { name: 'a', description: 'b', agentType: 'c', customAgentType: 'd' })
+  assert.deepEqual(parseMeta({ name: 'a', description: 'b', agentType: 'c', customAgentType: 'd', teamName: 't', other: 'e' }), { name: 'a', description: 'b', agentType: 'c', customAgentType: 'd', teamName: 't' })
   assert.deepEqual(parseMeta({ name: 5, description: [], agentType: { toString: 0 }, customAgentType: true }), {})
   for (const raw of [null, 5, 's', [], undefined]) assert.deepEqual(parseMeta(raw), {}, String(raw))
 })

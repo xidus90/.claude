@@ -405,12 +405,14 @@ const ageOf = (ms: number): string => {
 const accountOf = (config: string): string => /[\\/]\.claude-([^\\/]+)[\\/]?$/.exec(config)?.[1] ?? ''
 
 const PICK_TEXT = 60
+// A label sits in a picker of its own row; 40 characters of a title leave room for project and age.
+const LABEL_TITLE = 40
 
 export function sessionLabel(s: SessionInfo, now: number): string {
   const account = accountOf(s.config)
   // Whole characters: a cut through an emoji leaves half a surrogate pair, which the host refuses.
-  const cut = (text: string) => [...tidy(text)].slice(0, PICK_TEXT).join('')
-  return `${s.isLive ? '●' : '○'} ${cut(s.title)} · ${cut(s.project)} · ${ageOf(now - s.lastAt)}${account ? ` · ${cut(account)}` : ''}`
+  const cut = (text: string, n = PICK_TEXT) => [...tidy(text)].slice(0, n).join('')
+  return `${s.isLive ? '●' : '○'} ${cut(s.title, LABEL_TITLE)} · ${cut(s.project)} · ${ageOf(now - s.lastAt)}${account ? ` · ${cut(account)}` : ''}`
 }
 
 const sessionOf = (v: unknown): SessionInfo | null =>

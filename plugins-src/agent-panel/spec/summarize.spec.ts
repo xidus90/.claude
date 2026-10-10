@@ -89,6 +89,20 @@ test('a cache entry of the wrong shape is read from scratch, not kept forever', 
   assert.equal(s.agents[0]?.tokens.output, 20)
 })
 
+test('treats a session with teammates as a team even after its run folder is gone', () => {
+  const w = world()
+  const l = lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
+  agent(l, 'a1', { name: 'review-code-T1', agentType: 'review-code-T1', customAgentType: 'code-reviewer', teamName: 'session-8d42f61d' }, assistant({ id: 'x1' }))
+  agent(l, 'a2', { name: 'helper', agentType: 'general-purpose' }, assistant({ id: 'x2' }))
+  const s = summarize(opts(w, 's1'))
+  assert.equal(s.runId, 'session-8d42f61d')
+  assert.equal(s.agents.find((a) => a.id === 'a1')?.role, 'code-reviewer')
+  const plainOnly = world()
+  const l2 = lead(plainOnly, 'C--repo', 's1', assistant({ id: 'm1' }))
+  agent(l2, 'a2', { name: 'helper', agentType: 'general-purpose' }, assistant({ id: 'x2' }))
+  assert.equal(summarize(opts(plainOnly, 's1')).runId, null)
+})
+
 test('summarizes every generation of a team run, wherever its transcript lives', () => {
   const w = world()
   teamRun(w, ['s1', 's2'])
@@ -136,7 +150,7 @@ function summaryWithBadMeta(file: object, cached?: object): Summary {
   if (cached) {
     const metas = { [join(subagentsDir(l), 'agent-a1.meta.json')]: cached }
     mkdirSync(dirname(w.cache), { recursive: true })
-    writeFileSync(w.cache, JSON.stringify({ version: 4, files: {}, metas, leads: {} }))
+    writeFileSync(w.cache, JSON.stringify({ version: 5, files: {}, metas, leads: {} }))
   }
   return summarize(opts(w, 's1'))
 }

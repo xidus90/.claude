@@ -55,6 +55,7 @@ export function summarize(o: Options): Summary {
   const agents: AgentSummary[] = []
   const problems: string[] = []
   let unreadableLines = 0
+  let team = ''
   for (const sessionId of generations) {
     const lead = findLead(projects, sessionId, cache.leads[sessionId])
     if (lead === null) {
@@ -81,7 +82,9 @@ export function summarize(o: Options): Summary {
       }
       cache.files[src.transcript] = state
       unreadableLines += state.unreadable
-      agents.push(toSummary(src, sessionId, state, src.meta === null ? null : metaOf(src.meta, cache.metas)))
+      const meta = src.meta === null ? null : metaOf(src.meta, cache.metas)
+      team ||= meta?.teamName ?? ''
+      agents.push(toSummary(src, sessionId, state, meta))
     }
   }
   try {
@@ -90,7 +93,8 @@ export function summarize(o: Options): Summary {
     // The cache only saves work, so the numbers just read are still worth showing.
     problems.push(`Cache nicht gespeichert: ${(err as Error).message}`)
   }
-  return { runId: run?.runId ?? null, generations, agents, unreadableLines, problems }
+  // Teammates name their team, so a session that led one is a team even once its run folder is cleaned away.
+  return { runId: run?.runId ?? (team || null), generations, agents, unreadableLines, problems }
 }
 
 const USAGE =

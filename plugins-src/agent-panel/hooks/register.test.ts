@@ -695,7 +695,7 @@ test('picking another session summarizes its transcript with its own config and 
   expect(await ui.find({ type: 'Text', text: /gemeldet/ })).toBeUndefined()
   // A long title shrinks; the picker keeps its width and stays in reach.
   expect((await ui.find({ key: 'title' }))?.props.flexShrink).toBe(1)
-  expect((await ui.find({ key: 'picker-slot' }))?.props.flexShrink).toBe(0)
+  expect((await ui.find({ key: 'picker-row' }))?.props.justifyContent).toBe('flex-end')
   // The token bar keeps a line of space below the tiles.
   expect((await ui.find({ key: 'stripe-room' }))?.props.marginTop).toBe(1)
 })
@@ -749,7 +749,7 @@ test('a failing list call keeps the summary and shows no warning', async ($, on)
   expect(await ui.find({ type: 'Text', text: /^⚠/ })).toBeUndefined()
 })
 
-test('a narrow pane puts the session picker on a row of its own', async ($, on) => {
+test('the session picker stands on a row of its own under the title, right-aligned, on every width', async ($, on) => {
   const clock = mock.clock(on)
   stub(on, [], () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [], '', () => false, () => [OTHER])
   await $.session.start(START)
@@ -761,5 +761,6 @@ test('a narrow pane puts the session picker on a row of its own', async ($, on) 
   expect(await ui.find({ key: 'session' })).toBeDefined()
   await ui.unmount()
   ui = await $.ui.mount(WIDE('terminal'))
-  expect(await head()).toContain('"session"')
+  expect(await head()).not.toContain('"session"')
+  expect((await ui.find({ key: 'picker-row' }))?.props.justifyContent).toBe('flex-end')
 })
