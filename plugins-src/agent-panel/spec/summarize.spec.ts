@@ -55,6 +55,16 @@ test('summarizes a plain session: the lead and its subagents', () => {
   assert.deepEqual(summarize(opts(w, 's1')).agents.map((a) => a.name), ['Lead', 'probe'])
 })
 
+test('one line with a model that is not a string does not take down the whole summary', () => {
+  const w = world()
+  const l = lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
+  const bad = JSON.stringify({ type: 'assistant', message: { id: 'x1', model: 5, stop_reason: 'end_turn', usage: { output_tokens: 20 } } }) + '\n'
+  agent(l, 'a1', { name: 'impl-T1', agentType: 'implementer' }, bad)
+  const s = summarize(opts(w, 's1'))
+  assert.equal(s.agents.find((a) => a.kind === 'lead')?.tokens.output, 20)
+  assert.equal(s.agents.find((a) => a.id === 'a1')?.tokens.output, 20)
+})
+
 test('summarizes every generation of a team run, wherever its transcript lives', () => {
   const w = world()
   teamRun(w, ['s1', 's2'])

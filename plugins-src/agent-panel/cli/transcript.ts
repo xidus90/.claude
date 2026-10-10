@@ -15,7 +15,7 @@ type Line = {
   timestamp?: string
   effort?: unknown
   isApiErrorMessage?: boolean
-  message?: { id?: string; model?: string; stop_reason?: string | null; usage?: Usage; content?: unknown }
+  message?: { id?: string; model?: unknown; stop_reason?: string | null; usage?: Usage; content?: unknown }
 }
 
 type Pending = { id: string; model: string; tokens: TokenCounts }
@@ -78,7 +78,7 @@ function applyAssistant(s: FileState, line: Line): FileState {
   const msg = line.message ?? {}
   if (line.isApiErrorMessage) return { ...s, errorText: firstText(msg.content) }
   const hasAnswer = s.hasAnswer || msg.stop_reason === 'end_turn'
-  const model = msg.model ?? ''
+  const model = typeof msg.model === 'string' ? msg.model : ''
   if (!msg.usage || model === '<synthetic>') return { ...s, hasAnswer, errorText: '' }
   const id = msg.id ?? ''
   const next: Pending = { id, model, tokens: tokensOf(msg.usage) }

@@ -161,3 +161,22 @@ test('remembers the last effort a line names', () => {
   assert.equal(applyLines(emptyState(), lines).effort, 'medium')
   assert.equal(emptyState().effort, '')
 })
+
+const rawModel = (id: string, model: unknown) =>
+  JSON.stringify({ type: 'assistant', message: { id, model, stop_reason: 'end_turn', usage: { output_tokens: 20 } } }) + '\n'
+
+test('treats a model that is not a string as unpriced, on the newest line', () => {
+  const s = read(assistant({ id: 'a' }) + rawModel('b', 5))
+  const t = totals(s)
+  assert.equal(t.tokens.output, 40)
+  assert.equal(t.unpriced, true)
+  assert.equal(s.model, '')
+})
+
+test('treats a model that is not a string as unpriced, once a later message settles it', () => {
+  const s = read(rawModel('a', { name: 'opus' }) + assistant({ id: 'b' }))
+  const t = totals(s)
+  assert.equal(t.tokens.output, 40)
+  assert.equal(t.unpriced, true)
+  assert.equal(s.model, 'claude-opus-5-5')
+})
