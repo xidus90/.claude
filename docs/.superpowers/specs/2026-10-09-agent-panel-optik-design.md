@@ -121,6 +121,15 @@ Keine Legende am Ende.
 „Fertige ausblenden“ blendet ✓-Zeilen in allen Rollen aus; eine Rolle, deren
 Agents alle fertig sind, zeigt dann nur ihren Kopf und den Kostenbalken.
 
+Eine Karte zeigt höchstens 150 Zeilen und darunter „… N weitere Agents“: Das
+Terminal zeichnet einen Pane nur bis 100 000 Zeichen Text und schnitte den Rest
+sonst stumm ab.
+
+`/agent-panel` zählt einen Pane, der unaufgefordert geöffnet wurde und im
+schmalen Terminal ungezeichnet wartet (`isPlaced` false), als geschlossen: Der
+Befehl zeigt ihn dann, statt ihn zu schließen, und der Takt startet für ihn kein
+`node`.
+
 ### Zustand
 
 Klapp- und Ausblende-Zustand gelten für die laufende Sitzung (Modulvariable).

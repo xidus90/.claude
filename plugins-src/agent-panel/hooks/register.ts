@@ -3,7 +3,7 @@ import type { Summary } from '../shared/summary.ts'
 import { blockBar, CARD_GAP, costBarSvg, costParts, crabRaster, crabSvg, layoutOf, paletteOf, STATUS_COLOR, statusParts, statusSvg, stripeSvg, tilesSvg, tokenParts, type BarPart, type Palette } from './art.ts'
 import { EMPTY_LOG, onSpawn, type SpawnLog } from './open.ts'
 import { costumeOf } from './sprites.ts'
-import { buildView, countsLine, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, startError, statusLine, visibleRows, type Group, type LiveAgent, type Row, type View } from './view.ts'
+import { buildView, countsLine, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, moreLine, parseResult, reportedCost, rowLine, scriptArgs, startError, statusLine, visibleRows, type Group, type LiveAgent, type Row, type View } from './view.ts'
 
 const PANE = 'agent-panel'
 // Measured in docs/.superpowers/smoke/2026-10-09-agent-panel-probe.md.
@@ -66,8 +66,8 @@ async function refresh($: EngineInterface): Promise<void> {
 
 async function openPane($: EngineInterface, byUser: boolean): Promise<void> {
   hasOpened = true
-  await $.ui.open(byUser ? { id: PANE, title: 'Agents', focus: true, closeOnEscape: true } : { id: PANE, title: 'Agents' })
-  isPaneOpen = true
+  const opened = await $.ui.open(byUser ? { id: PANE, title: 'Agents', focus: true, closeOnEscape: true } : { id: PANE, title: 'Agents' })
+  isPaneOpen = opened.isPlaced
   void refresh($)
 }
 
@@ -101,7 +101,7 @@ function textTree({ Box, Text, Button }: TextUi, v: View, redraw: () => void) {
         }),
         ...(collapsed.has(g.key)
           ? []
-          : g.rows.flatMap((r) => [
+          : visibleRows(g, false).flatMap((r) => [
               Box({
                 flexDirection: 'row',
                 children: [
@@ -119,6 +119,7 @@ function textTree({ Box, Text, Button }: TextUi, v: View, redraw: () => void) {
               }),
               ...(expanded.has(r.key) ? [Text({ dimColor: true, children: [detailLine(r)] })] : []),
             ])),
+        ...(!collapsed.has(g.key) && moreLine(g, false) ? [Text({ dimColor: true, children: [moreLine(g, false)] })] : []),
       ]),
     ],
   })
@@ -201,6 +202,7 @@ export const register: Register = (on) => {
             Text({ bold: true, children: [g.cost] }),
           ] }),
           ...(isGroupOpen ? [bar(`cost-${g.key}`, 'Kostenanteil', costParts(g.costShare), costBarSvg(palette, g.costShare), cardBarCells), ...visibleRows(g, isHidingDone).flatMap(row)] : []),
+          ...(isGroupOpen && moreLine(g, isHidingDone) ? [Text({ dimColor: true, children: [moreLine(g, isHidingDone)] })] : []),
         ]
         return Box({ key: `card-${g.key}`, flexDirection: 'row', borderStyle: 'round', paddingX: 1, columnGap: CARD_GAP, children: [
           ...(isWide ? [crab(g)] : []),

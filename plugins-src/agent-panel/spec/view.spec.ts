@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildView, countsLine, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, sharesOf, startError, statusLine, dirsOf, toggle, visibleRows, type ViewInput } from '../hooks/view.ts'
+import { buildView, countsLine, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, sharesOf, startError, statusLine, dirsOf, toggle, visibleRows, moreLine, type ViewInput } from '../hooks/view.ts'
 import type { AgentSummary, Summary } from '../shared/summary.ts'
 
 const MIN = 60_000
@@ -274,6 +274,18 @@ test('toggle adds a missing key and removes a present one', () => {
 test('tells whether a pane is open', () => {
   assert.equal(isOpen([{ id: 'x' }, { id: 'agent-panel' }], 'agent-panel'), true)
   assert.equal(isOpen([{ id: 'x' }], 'agent-panel'), false)
+  // A pane that waits undrawn is listed, but the person does not see it.
+  assert.equal(isOpen([{ id: 'agent-panel', isPlaced: false }], 'agent-panel'), false)
+  assert.equal(isOpen([{ id: 'agent-panel', isPlaced: true }], 'agent-panel'), true)
+})
+
+test('draws the first rows of a big card and names how many it leaves out', () => {
+  const many = Array.from({ length: 160 }, (_, i) => agent({ id: `a${i}`, name: `a${i}`, firstAt: i }))
+  const g = buildView(input(plain([lead({}), ...many]), { live: [{ id: 'a159', status: 'running' }] })).groups.find((x) => x.key === 'agents') ?? assert.fail()
+  assert.equal(visibleRows(g, false).length, 150)
+  assert.equal(moreLine(g, false), '… 10 weitere Agents')
+  assert.equal(visibleRows(g, true).length, 1)
+  assert.equal(moreLine(g, true), '')
 })
 
 test('splits tokens into shares, and gives all zeros for no tokens', () => {

@@ -260,7 +260,19 @@ export const statusLine = (c: StatusCounts): string =>
 export const countsLine = (c: StatusCounts): string =>
   [`● ${c.running}`, `✓ ${c.done}`, ...(c.failed ? [`✗ ${c.failed}`] : []), ...(c.aborted ? [`⊘ ${c.aborted}`] : [])].join('  ')
 
-export const visibleRows = (g: Group, hideDone: boolean): Row[] => (hideDone ? g.rows.filter((r) => r.status !== 'done') : g.rows)
+// The host draws a terminal pane only up to 100 000 characters of text; this many rows of a card stay
+// below that at every width, so the card names the rest instead of losing them silently.
+// ponytail: a cap per card, not per pane; many big cards together can still pass the limit.
+const MAX_ROWS = 150
+
+const rowsOf = (g: Group, hideDone: boolean): Row[] => (hideDone ? g.rows.filter((r) => r.status !== 'done') : g.rows)
+
+export const visibleRows = (g: Group, hideDone: boolean): Row[] => rowsOf(g, hideDone).slice(0, MAX_ROWS)
+
+export function moreLine(g: Group, hideDone: boolean): string {
+  const rest = rowsOf(g, hideDone).length - MAX_ROWS
+  return rest > 0 ? `… ${rest} weitere Agents` : ''
+}
 
 export const groupLine = (g: Group, isCollapsed: boolean): string =>
   `${isCollapsed ? '▸' : '▾'} ${g.title}  ${g.cost}  ${g.tokens}  ${g.time}`
@@ -360,4 +372,6 @@ export function toggle(set: Set<string>, key: string): void {
   else set.add(key)
 }
 
-export const isOpen = (panes: readonly { id: string }[], id: string): boolean => panes.some((p) => p.id === id)
+// A pane opened unasked on a narrow terminal is listed but waits undrawn (isPlaced false).
+export const isOpen = (panes: readonly { id: string; isPlaced?: boolean }[], id: string): boolean =>
+  panes.some((p) => p.id === id && p.isPlaced !== false)
