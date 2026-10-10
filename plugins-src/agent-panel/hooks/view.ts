@@ -76,7 +76,9 @@ const addTokens = (agents: AgentSummary[]): TokenCounts => agents.reduce<TokenCo
 }), { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 })
 
 function modelName(id: string): string {
-  const m = /(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2})(?!\d))?/i.exec(id)
+  // Claude 3.x ids put the version before the family and a date after it: claude-3-5-haiku-20241022.
+  const old = /-(\d)(?:-(\d))?-(opus|sonnet|haiku)/i.exec(id)
+  const m = old ? [old[0], old[3], old[1], old[2]] : /(fable|mythos|opus|sonnet|haiku)-(\d+)(?:-(\d{1,2})(?!\d))?/i.exec(id)
   if (!m) return id || '—'
   const family = (m[1] as string).toLowerCase()
   return `${family[0]?.toUpperCase()}${family.slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ''}`
@@ -175,10 +177,12 @@ export function buildView(input: ViewInput): View {
 
   const buckets = new Map<string, AgentSummary[]>()
   for (const a of s.agents) {
-    const key = a.kind === 'lead' ? 'lead' : isTeam ? a.role : 'agents'
+    // A role may itself be named like the lead or the plain bucket, so it gets a key of its own.
+    const key = a.kind === 'lead' ? 'lead' : !isTeam ? 'agents' : a.role === 'lead' || a.role === 'agents' ? `role-${a.role}` : a.role
     buckets.set(key, [...(buckets.get(key) ?? []), a])
   }
   const groups: Group[] = [...buckets].map(([key, members]) => {
+    const role = key === 'lead' || key === 'agents' ? key : (members[0] as AgentSummary).role
     // Leads stay in generation order; agents put the running ones first, then go by start.
     const sorted = key === 'lead'
       ? members
@@ -189,8 +193,8 @@ export function buildView(input: ViewInput): View {
     for (const a of members) counts[STATUS_OF[glyphs.get(a) as Glyph]] += 1
     return {
       key,
-      role: key,
-      title: key === 'lead' ? (isTeam ? 'Lead (Orchestrator)' : 'Lead') : key === 'agents' ? 'Agents' : key,
+      role,
+      title: key === 'lead' ? (isTeam ? 'Lead (Orchestrator)' : 'Lead') : key === 'agents' ? 'Agents' : role,
       cost: fmtCost(costUsd),
       tokens: fmtTokens(members.reduce((n, a) => n + tokenSum(a.tokens), 0)),
       time: fmtTime(wallClock(members, glyphs, s.generations, input.now)),
@@ -201,7 +205,10 @@ export function buildView(input: ViewInput): View {
       rows: sorted.map(rowOf),
     }
   })
-  groups.sort((x, y) => Number(y.isRunning) - Number(x.isRunning) || y.costUsd - x.costUsd)
+  // Role cards go running first, then by cost; a plain session is just the lead, then its agents.
+  groups.sort((x, y) => isTeam
+    ? Number(y.isRunning) - Number(x.isRunning) || y.costUsd - x.costUsd
+    : Number(y.key === 'lead') - Number(x.key === 'lead'))
 
   const total = s.agents.reduce((n, a) => n + a.costUsd, 0)
   for (const g of groups) g.costShare = total > 0 ? g.costUsd / total : 0

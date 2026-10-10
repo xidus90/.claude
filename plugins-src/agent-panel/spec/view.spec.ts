@@ -433,3 +433,27 @@ test('caps the script error notice at the same length as every other text', () =
   const v = buildView(input(null, { error: `summarize exit 1: ${'E'.repeat(300)}` }))
   assert.equal(v.notices[0], `⚠ summarize exit 1: ${'E'.repeat(81)}…`)
 })
+
+test('a script failure with a multi-line stderr becomes a one-line notice', () => {
+  const stderr = 'node:internal/modules/run_main:123\n    triggerUncaughtException(\n    ^\n\nError: boom\n'
+  const v = buildView(input(null, { error: parseResult({ exitCode: 1, stdout: '', stderr }).error }))
+  assert.equal(v.notices.length, 1)
+  assert.doesNotMatch(v.notices[0] ?? '', /[\r\n]/)
+})
+
+test('a plain session lists the lead first even when a running agent cost more', () => {
+  const v = buildView(input(plain([lead({ costUsd: 0.1 }), agent({ id: 'b', name: 'busy', costUsd: 2 })]), { live: [{ id: 'b', status: 'running' }] }))
+  assert.deepEqual(v.groups.map((g) => g.title), ['Lead', 'Agents'])
+})
+
+test('an agent whose role is named lead or agents gets its own card', () => {
+  const v = buildView(input(team([lead({}), agent({ id: 'x', role: 'lead', task: 'impl T9' }), agent({ id: 'y', role: 'agents', task: 'impl T8' })])))
+  assert.deepEqual(v.groups.find((g) => g.title === 'Lead (Orchestrator)')?.rows.map((r) => r.key), ['lead:s1'])
+  assert.deepEqual(v.groups.map((g) => [g.title, g.role]).sort(), [['Lead (Orchestrator)', 'lead'], ['agents', 'agents'], ['lead', 'lead']])
+  assert.equal(new Set(v.groups.map((g) => g.key)).size, 3)
+})
+
+test('names Claude 3.x models by family and version, not by their date', () => {
+  const v = buildView(input(plain([lead({}), agent({ id: 'h', model: 'claude-3-5-haiku-20241022' }), agent({ id: 's', model: 'claude-3-7-sonnet-20250219', firstAt: 1 }), agent({ id: 'o', model: 'claude-3-opus-20240229', firstAt: 2 })])))
+  assert.deepEqual(v.groups.find((g) => g.key === 'agents')?.rows.map((r) => r.model), ['Haiku 3.5', 'Sonnet 3.7', 'Opus 3'])
+})
