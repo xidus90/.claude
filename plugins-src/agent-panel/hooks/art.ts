@@ -36,7 +36,9 @@ export const costParts = (share: number): BarPart[] => [{ share: Number.isFinite
 
 // A terminal pane at least this many columns wide draws a crab beside each role.
 export const WIDE_COLUMNS = 70
-export const CRAB_COLUMNS = GRID_W / 2
+// Pixels per side of the block one half cell of the terminal crab stands for.
+const BLOCK = 4
+export const CRAB_COLUMNS = Math.ceil(GRID_W / BLOCK)
 export const CARD_GAP = 1
 // The role card's round border and its padding of one cell on each side.
 const CARD_FRAME = 4
@@ -133,16 +135,33 @@ const SPACE = 0x20
 
 const rgb = (hex: string): number => Number.parseInt(hex.slice(1), 16)
 
-// Every second column and row of the 30×28 grid, two sampled rows per terminal row.
+// The commonest color of a 4×4 block of the grid, so a thin leg or claw survives the shrink.
+function blockColor(grid: (string | null)[][], y: number, x: number): string | null {
+  const counts = new Map<string, number>()
+  for (let dy = 0; dy < BLOCK; dy++) {
+    for (let dx = 0; dx < BLOCK; dx++) {
+      const color = grid[y + dy]?.[x + dx] ?? null
+      if (color) counts.set(color, (counts.get(color) ?? 0) + 1)
+    }
+  }
+  let best: string | null = null
+  for (const [color, n] of counts) if (best === null || n > (counts.get(best) as number)) best = color
+  return best
+}
+
+// One 4×4 block of the 30×28 grid per half cell, two blocks per terminal row.
 export function crabRaster(costume: string): { columns: number; rows: number; cells: string } {
   const grid = pixelGrid(spriteOf(costume))
   const columns = CRAB_COLUMNS
-  const rows = GRID_H / 4
+  // Start at the sprite's first row and end at its last, so the raster has no blank line above or below.
+  const first = grid.findIndex((row) => row.some(Boolean))
+  const last = GRID_H - 1 - [...grid].reverse().findIndex((row) => row.some(Boolean))
+  const rows = Math.ceil((last - first + 1) / (2 * BLOCK))
   const words: number[] = []
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < columns; c++) {
-      const top = grid[r * 4]?.[c * 2] ?? null
-      const bottom = grid[r * 4 + 2]?.[c * 2] ?? null
+      const top = blockColor(grid, first + r * 2 * BLOCK, c * BLOCK)
+      const bottom = blockColor(grid, first + r * 2 * BLOCK + BLOCK, c * BLOCK)
       if (top && bottom) words.push(UPPER, rgb(top), rgb(bottom))
       else if (top) words.push(UPPER, rgb(top), DEFAULT_COLOR)
       else if (bottom) words.push(LOWER, rgb(bottom), DEFAULT_COLOR)

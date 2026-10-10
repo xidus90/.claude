@@ -119,6 +119,11 @@ Keine Legende am Ende.
 - Agents: die Zähler je Status.
 - Rolle: Krabbe, Name, Zähler, Kosten.
 
+In einer Rollen-Karte steht über jedem Agent eine Leerzeile, also auch zwischen
+dem Kostenbalken der Rolle und dem ersten Agent. Die Terminal-Krabbe ist 8
+Zellen breit und so hoch, wie ihr Kostüm reicht (2–4 Zeilen); eine Halbzelle
+steht für einen 4×4-Block des Pixelrasters in seiner häufigsten Farbe.
+
 „Fertige ausblenden“ blendet ✓-Zeilen in allen Rollen aus; eine Rolle, deren
 Agents alle fertig sind, zeigt dann nur ihren Kopf und den Kostenbalken.
 

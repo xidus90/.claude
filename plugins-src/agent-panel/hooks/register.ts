@@ -186,7 +186,8 @@ export const register: Register = (on) => {
       const crab = (g: Group) => e.surface === 'terminal'
         ? $.ui.resolve(e).Raster({ key: `crab-${g.role}`, ...crabRaster(costumeOf(g.role)) })
         : Box({ key: `crab-${g.role}`, children: [$.ui.resolve(e).Svg({ source: crabSvg(costumeOf(g.role), g.isRunning), alt: `Krabbe ${g.title}` })] })
-      const row = (r: Row) => [
+      // A blank line above each agent sets it apart from the cost bar and from the agent before.
+      const row = (r: Row) => [Box({ key: `row-${r.key}`, flexDirection: 'column', marginTop: 1, children: [
         Box({ flexDirection: 'row', children: [
           Text({ color: STATUS_COLOR[r.status], children: [`${r.glyph} `] }),
           Button({ key: `r-${r.key}`, plain: true, label: r.label, onPress: () => { toggle(expanded, r.key); redraw() } }),
@@ -194,7 +195,7 @@ export const register: Register = (on) => {
         ] }),
         bar(`stripe-${r.key}`, 'Tokenverteilung', tokenParts(palette, r.shares), stripeSvg(palette, r.shares, 6), cardBarCells),
         ...(expanded.has(r.key) ? [Text({ dimColor: true, children: [detailLine(r)] })] : []),
-      ]
+      ] })]
       const group = (g: Group) => {
         const isGroupOpen = !collapsed.has(g.key)
         const body = [

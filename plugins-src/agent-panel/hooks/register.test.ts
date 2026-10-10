@@ -511,6 +511,19 @@ test('a view that cannot be built leaves a warning instead of a blank pane', asy
   expect(await ui.find({ type: 'Text', text: /^⚠ Grafik: / })).toBeUndefined()
 })
 
+test('each agent row of a card keeps a blank line above it, after the cost bar and between agents', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(WIDE('terminal'))
+  const rows = (await ui.findAll({ type: 'Box' })).filter((b) => b.key?.startsWith('row-'))
+  expect(rows.length).toBeGreaterThan(0)
+  for (const r of rows) expect(r.props.marginTop).toBe(1)
+})
+
 test('a narrow pane puts the Agents buttons on a row of their own that wraps', async ($, on) => {
   const clock = mock.clock(on)
   stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
