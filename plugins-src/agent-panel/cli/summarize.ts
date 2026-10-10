@@ -13,10 +13,9 @@ export type Options = { session: string; cwd: string; home: string; cache: strin
 type Source = { id: string; transcript: string; meta: string | null }
 
 function metaOf(path: string, known: Record<string, Meta>): Meta | null {
-  const cached = known[path]
-  if (cached) return cached
   try {
-    const meta = parseMeta(JSON.parse(readFileSync(path, 'utf8')))
+    // The cache file is as untrusted as the meta file it copies from.
+    const meta = parseMeta(known[path] ?? JSON.parse(readFileSync(path, 'utf8')))
     known[path] = meta
     return meta
   } catch {

@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { main, summarize } from '../cli/summarize.ts'
 import type { Summary } from '../shared/summary.ts'
 import { apiError, assistant, tempDir } from './helpers.ts'
@@ -23,8 +23,10 @@ function lead(w: World, folder: string, session: string, body: string): string {
   return path
 }
 
+const subagentsDir = (leadPath: string) => join(leadPath.replace(/\.jsonl$/, ''), 'subagents')
+
 function agent(leadPath: string, id: string, meta: object | string, body: string): void {
-  const dir = join(leadPath.replace(/\.jsonl$/, ''), 'subagents')
+  const dir = subagentsDir(leadPath)
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, `agent-${id}.jsonl`), body)
   writeFileSync(join(dir, `agent-${id}.meta.json`), typeof meta === 'string' ? meta : JSON.stringify(meta))
@@ -103,24 +105,44 @@ test('falls back to the description, then the id, when a meta file says little o
 
 const notStrings: unknown[] = [5, true, {}, [], [1], { toString: 0 }, [{ toString: 0 }]]
 
+// A lead, a clean agent a2 and an agent a1 with the given meta file; `cached` plants an entry for a1's meta in the cache file.
+function summaryWithBadMeta(file: object, cached?: object): Summary {
+  const w = world()
+  const l = lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
+  agent(l, 'a1', file, '')
+  agent(l, 'a2', { name: 'impl-T1', agentType: 'team:coder' }, '')
+  if (cached) {
+    const metas = { [join(subagentsDir(l), 'agent-a1.meta.json')]: cached }
+    mkdirSync(dirname(w.cache), { recursive: true })
+    writeFileSync(w.cache, JSON.stringify({ version: 2, files: {}, metas, leads: {} }))
+  }
+  return summarize(opts(w, 's1'))
+}
+
+function assertBadMetaIgnored(s: Summary, label: string): void {
+  assert.deepEqual(s.problems, [], label)
+  assert.deepEqual(s.agents.map((a) => [a.id, a.name, a.role, a.task]), [
+    ['lead:s1', 'Lead', 'lead', ''],
+    ['a1', 'a1', 'agent', 'a1'],
+    ['a2', 'impl-T1', 'coder', 'impl T1'],
+  ], label)
+}
+
 for (const field of ['customAgentType', 'agentType', 'name', 'description']) {
   test(`a meta.json ${field} that is not a string counts as absent and does not take down the summary`, () => {
-    for (const value of notStrings) {
-      const w = world()
-      const l = lead(w, 'C--repo', 's1', assistant({ id: 'm1' }))
-      agent(l, 'a1', { [field]: value }, '')
-      agent(l, 'a2', { name: 'impl-T1', agentType: 'team:coder' }, '')
-      const s = summarize(opts(w, 's1'))
-      const label = JSON.stringify(value)
-      assert.deepEqual(s.problems, [], label)
-      assert.deepEqual(s.agents.map((a) => [a.id, a.name, a.role, a.task]), [
-        ['lead:s1', 'Lead', 'lead', ''],
-        ['a1', 'a1', 'agent', 'a1'],
-        ['a2', 'impl-T1', 'coder', 'impl T1'],
-      ], label)
-    }
+    for (const value of notStrings) assertBadMetaIgnored(summaryWithBadMeta({ [field]: value }), JSON.stringify(value))
+  })
+
+  test(`a cached meta ${field} that is not a string counts as absent and does not take down the summary`, () => {
+    for (const value of notStrings) assertBadMetaIgnored(summaryWithBadMeta({ name: 'clean', agentType: 'team:coder' }, { [field]: value }), JSON.stringify(value))
   })
 }
+
+test('a cached meta keeps its string fields and loses the rest', () => {
+  const s = summaryWithBadMeta({ name: 'from the file' }, { name: 'cached', customAgentType: 5, agentType: 'team:coder' })
+  const a1 = s.agents.find((a) => a.id === 'a1')
+  assert.deepEqual([a1?.name, a1?.role], ['cached', 'coder'])
+})
 
 test('a meta.json field that is not a string yields to the next field that is', () => {
   const w = world()
