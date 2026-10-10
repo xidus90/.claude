@@ -188,3 +188,9 @@ test('treats a model that is not a string as unpriced, once a later message sett
   assert.equal(t.unpriced, true)
   assert.equal(s.model, 'claude-opus-5-5')
 })
+
+test('flags a prototype-named model as unpriced and keeps the cost finite', () => {
+  const t = totals(read(assistant({ id: 'a', model: 'constructor' }) + assistant({ id: 'b', model: 'claude-opus-5-5', usage: { output_tokens: 1_000_000 } })))
+  assert.equal(t.unpriced, true)
+  assert.equal(t.costUsd, 20)
+})

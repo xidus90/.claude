@@ -43,8 +43,8 @@ export function modelKey(model: string): string {
 
 export function costOf(model: string, t: TokenCounts): number | null {
   const key = modelKey(model)
-  const base = RATES[key]
-  if (!base) return null
+  if (!Object.hasOwn(RATES, key)) return null
+  const base = RATES[key]!
   const prompt = t.input + t.cacheRead + t.cacheWrite5m + t.cacheWrite1h
   const r = key === 'haiku-5-5' && prompt > HAIKU_LONG_PROMPT ? HAIKU_5_5_LONG : base
   const micro = t.input * r[0] + t.output * r[1] + t.cacheRead * r[2] + t.cacheWrite5m * r[3] + t.cacheWrite1h * r[4]

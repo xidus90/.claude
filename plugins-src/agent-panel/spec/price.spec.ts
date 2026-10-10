@@ -56,3 +56,9 @@ test('returns null for a model without a price', () => {
   assert.equal(costOf('opus', t({ input: M })), null)
   assert.equal(costOf('<synthetic>', t({})), null)
 })
+
+test('returns null for a model named like an Object.prototype member', () => {
+  for (const model of ['constructor', '__proto__', 'claude-constructor', '__proto__[1m]', 'toString', 'claude-hasOwnProperty']) {
+    assert.equal(costOf(model, t({ output: M })), null, model)
+  }
+})
