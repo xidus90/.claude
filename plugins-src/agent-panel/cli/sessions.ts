@@ -1,5 +1,5 @@
 import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import type { SessionInfo } from '../shared/summary.ts'
 
 const LIMIT = 20
@@ -25,7 +25,8 @@ export function configsOf(home: string, own: string): string[] {
     .filter((name) => name === '.claude' || name.startsWith('.claude-'))
     .map((name) => join(home, name))
     .filter((dir) => existsSync(join(dir, 'projects')))
-  return [own, ...found.filter((dir) => dir !== own)]
+  // The hook may spell the own folder with other separators than the listing does.
+  return [own, ...found.filter((dir) => resolve(dir) !== resolve(own))]
 }
 
 function transcripts(config: string): Found[] {

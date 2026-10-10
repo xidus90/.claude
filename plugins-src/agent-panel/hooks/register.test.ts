@@ -39,6 +39,8 @@ function stub(
   panes: string[],
   deny = '',
   failPanes = (): boolean => false,
+  sessions = (): object[] => [],
+  lists: string[][] = [],
 ): void {
   on('session.start', () => ({ cwd: '/work' }))
   on('command.register', () => ({ value: undefined }))
@@ -46,6 +48,11 @@ function stub(
   on('session.cwd', () => ({ value: '/work' }))
   mock.env(on, { USERPROFILE: 'C:/Users/u', TEMP: 'C:/tmp', CLAUDE_CONFIG_DIR: 'C:/Users/u/.claude-b' })
   on('process.run', async ($, e) => {
+    // The session list is a call of its own; `runs` counts the summaries.
+    if (e.argv.includes('--list')) {
+      lists.push(e.argv)
+      return { value: { exitCode: 0, stdout: JSON.stringify(sessions()), stderr: '' } }
+    }
     runs.push(e.argv)
     return deny ? { deny } : { value: await answer() }
   })
@@ -556,4 +563,75 @@ test('a narrow pane puts the Agents buttons on a row of their own that wraps', a
   await ui.unmount()
   ui = await $.ui.mount(WIDE('terminal'))
   expect(await sameRow()).toBe(true)
+})
+
+const OTHER = { id: 's2', config: 'C:/Users/u/.claude-b', project: 'repo', title: 'Agent-team fortsetzen', cwd: 'C:/repo', lastAt: 0, isLive: false }
+
+test('the title row offers this and the recent sessions in a Select', async ($, on) => {
+  const clock = mock.clock(on)
+  const lists: string[][] = []
+  stub(on, [], () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [], '', () => false, () => [OTHER, { ...OTHER, id: 's1' }], lists)
+  await $.session.start(START)
+  await clock.advance(10_000)
+  expect(lists.length).toBe(0)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  expect(lists[0]?.slice(2)).toEqual(['--list', '--home', 'C:/Users/u', '--config', 'C:/Users/u/.claude-b'])
+  const ui = await $.ui.mount(WIDE('terminal'))
+  const select = await ui.find({ key: 'session' })
+  expect(select?.type).toBe('Select')
+  const options = select?.props.options as { value: string; label: string }[]
+  // The own session stands first under its own name, not again among the others.
+  expect(options.map((o) => o.value)).toEqual(['', 's2'])
+  expect(options[0]?.label).toBe('Diese Sitzung')
+  expect(options[1]?.label).toMatch(/^○ Agent-team fortsetzen · repo · .* · b$/)
+})
+
+test('picking another session summarizes its transcript with its own config and cwd', async ($, on) => {
+  const clock = mock.clock(on)
+  const runs: string[][] = []
+  stub(on, runs, () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [], '', () => false, () => [OTHER])
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(WIDE('terminal'))
+  await ui.select({ key: 'session', value: 's2' })
+  await clock.advance(2000)
+  const last = runs[runs.length - 1] ?? []
+  expect(last.slice(2, 8)).toEqual(['--session', 's2', '--cwd', 'C:/repo', '--config', 'C:/Users/u/.claude-b'])
+  expect(await ui.find({ type: 'Text', text: 'Sitzung: Agent-team fortsetzen' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'nur aus dem Transkript' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /gemeldet/ })).toBeUndefined()
+})
+
+test('a picked session that left the list falls back to this one', async ($, on) => {
+  const clock = mock.clock(on)
+  let sessions: object[] = [OTHER]
+  const runs: string[][] = []
+  stub(on, runs, () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [], '', () => false, () => sessions)
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(WIDE('terminal'))
+  await ui.select({ key: 'session', value: 's2' })
+  sessions = []
+  await clock.advance(10_000)
+  await clock.advance(2000)
+  expect((runs[runs.length - 1] ?? []).slice(2, 4)).toEqual(['--session', 's1'])
+  expect(await ui.find({ type: 'Text', text: 'Diese Sitzung' })).toBeDefined()
+})
+
+test('a narrow pane puts the session picker on a row of its own', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [], '', () => false, () => [OTHER])
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const head = async () => JSON.stringify((await ui.find({ key: 'title-row' }))?.children ?? [])
+  let ui = await $.ui.mount(NARROW('terminal'))
+  expect(await head()).not.toContain('"session"')
+  expect(await ui.find({ key: 'session' })).toBeDefined()
+  await ui.unmount()
+  ui = await $.ui.mount(WIDE('terminal'))
+  expect(await head()).toContain('"session"')
 })

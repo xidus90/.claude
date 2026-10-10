@@ -89,4 +89,6 @@ test('finds the config folders in the home, the own one first and none twice', (
   for (const d of ['.claude', '.claude-b', '.claudex']) mkdirSync(join(home, d, 'projects'), { recursive: true })
   assert.deepEqual(configsOf(home, join(home, '.claude-b')), [join(home, '.claude-b'), join(home, '.claude')])
   assert.deepEqual(configsOf(join(home, 'missing'), '/own'), ['/own'])
+  // The hook names its folder with forward slashes; the same folder found in the home is not listed twice.
+  assert.deepEqual(configsOf(home, `${home.replace(/\\/g, '/')}/.claude`), [`${home.replace(/\\/g, '/')}/.claude`, join(home, '.claude-b')])
 })
