@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildView, countsLine, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, sharesOf, startError, statusLine, dirsOf, toggle, visibleRows, moreLine, sessionsOf, sessionLabel, listArgs, type ViewInput } from '../hooks/view.ts'
+import { buildView, countsLine, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, sharesOf, startError, statusLine, dirsOf, toggle, visibleRows, moreLine, sessionsOf, sessionLabel, listArgs, pickerOptions, isGone, type ViewInput } from '../hooks/view.ts'
 import type { AgentSummary, SessionInfo, Summary } from '../shared/summary.ts'
 
 const MIN = 60_000
@@ -489,6 +489,31 @@ test('labels a session with its state, title, project, age and account', () => {
   const long = sessionLabel(info({ title: `a${String.fromCharCode(27)}[31m${'x'.repeat(10_000)}` }), now)
   assert.ok(!long.includes(String.fromCharCode(27)))
   assert.ok(long.length < 120, String(long.length))
+})
+
+test('cuts a label text on whole characters, never through an emoji', () => {
+  const label = sessionLabel(info({ title: `${'t'.repeat(59)}😀😀` }), 10 * MIN)
+  const title = label.slice(2, label.indexOf(' · '))
+  assert.equal([...title].length, 60)
+  assert.ok(title.endsWith('😀'))
+  assert.ok(!/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(label))
+})
+
+test('offers this session first, then the listed ones, and keeps a picked one that left the list', () => {
+  const now = 10 * MIN
+  const a = info({ id: 'a' })
+  const b = info({ id: 'b' })
+  assert.deepEqual(pickerOptions([a, b], null, now).map((o) => o.value), ['', 'a', 'b'])
+  assert.equal(pickerOptions([], null, now)[0]?.label, 'Diese Sitzung')
+  assert.deepEqual(pickerOptions([a], b, now).map((o) => o.value), ['', 'b', 'a'])
+  assert.deepEqual(pickerOptions([a, b], b, now).map((o) => o.value), ['', 'a', 'b'])
+})
+
+test('tells when the picked session has no transcript any more', () => {
+  const gone = { ...plain([]), problems: ['kein Transkript für Sitzung s2'] }
+  assert.equal(isGone(gone, 's2'), true)
+  assert.equal(isGone(gone, 's3'), false)
+  assert.equal(isGone(null, 's2'), false)
 })
 
 test('accepts the --list output only in the shape the picker reads', () => {

@@ -51,7 +51,12 @@ function stub(
     // The session list is a call of its own; `runs` counts the summaries.
     if (e.argv.includes('--list')) {
       lists.push(e.argv)
-      return { value: { exitCode: 0, stdout: JSON.stringify(sessions()), stderr: '' } }
+      try {
+        return { value: { exitCode: 0, stdout: JSON.stringify(sessions()), stderr: '' } }
+      } catch (err) {
+        // A list that cannot be made fails the call itself, as a timeout does.
+        return { deny: String(err) }
+      }
     }
     runs.push(e.argv)
     return deny ? { deny } : { value: await answer() }
@@ -604,7 +609,7 @@ test('picking another session summarizes its transcript with its own config and 
   expect(await ui.find({ type: 'Text', text: /gemeldet/ })).toBeUndefined()
 })
 
-test('a picked session that left the list falls back to this one', async ($, on) => {
+test('a picked session that only left the 20 newest stays picked', async ($, on) => {
   const clock = mock.clock(on)
   let sessions: object[] = [OTHER]
   const runs: string[][] = []
@@ -617,8 +622,40 @@ test('a picked session that left the list falls back to this one', async ($, on)
   sessions = []
   await clock.advance(10_000)
   await clock.advance(2000)
+  expect((runs[runs.length - 1] ?? []).slice(2, 4)).toEqual(['--session', 's2'])
+  const options = (await ui.find({ key: 'session' }))?.props.options as { value: string }[]
+  expect(options.map((o) => o.value)).toEqual(['', 's2'])
+})
+
+test('a picked session whose transcript is gone falls back to this one with a notice', async ($, on) => {
+  const clock = mock.clock(on)
+  const runs: string[][] = []
+  const gone = JSON.stringify({ runId: null, generations: ['s2'], agents: [], unreadableLines: 0, problems: ['kein Transkript für Sitzung s2'] })
+  stub(on, runs, () => ({ exitCode: 0, stdout: runs[runs.length - 1]?.includes('s2') ? gone : GOOD, stderr: '' }), [], [], [], '', () => false, () => [OTHER])
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(WIDE('terminal'))
+  await ui.select({ key: 'session', value: 's2' })
+  await clock.advance(2000)
+  expect(await ui.find({ type: 'Text', text: /Agent-team fortsetzen.*nicht mehr/ })).toBeDefined()
+  await clock.advance(2000)
   expect((runs[runs.length - 1] ?? []).slice(2, 4)).toEqual(['--session', 's1'])
   expect(await ui.find({ type: 'Text', text: 'Diese Sitzung' })).toBeDefined()
+})
+
+test('a failing list call keeps the summary and shows no warning', async ($, on) => {
+  const clock = mock.clock(on)
+  const runs: string[][] = []
+  stub(on, runs, () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [], '', () => false, () => { throw new Error('list broke') })
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  // The open's own refresh, before any tick: the failed list must not cost its summary.
+  await clock.advance(1)
+  expect(runs.length).toBe(1)
+  const ui = await $.ui.mount(WIDE('terminal'))
+  expect(await ui.find({ type: 'Text', text: /^Kosten ≈ \$0\.02/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^⚠/ })).toBeUndefined()
 })
 
 test('a narrow pane puts the session picker on a row of its own', async ($, on) => {

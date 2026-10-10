@@ -36,8 +36,9 @@ function transcripts(config: string): Found[] {
       .filter((name) => name.endsWith('.jsonl'))
       .flatMap((name) => {
         const path = join(projects, folder, name)
-        const st = statSync(path)
-        return st.isFile() ? [{ path, config, folder, id: name.slice(0, -6), mtime: st.mtimeMs }] : []
+        // A link to nowhere or a locked file is skipped; the list is a convenience, not a finding.
+        const st = statSync(path, { throwIfNoEntry: false })
+        return st?.isFile() ? [{ path, config, folder, id: name.slice(0, -6), mtime: st.mtimeMs }] : []
       }),
   )
 }
@@ -67,11 +68,23 @@ function lineOf(raw: string): Record<string, unknown> | null {
   }
 }
 
+function readEdges(path: string): string {
+  try {
+    return edges(path)
+    // Only a file that vanishes or gets locked between the stat and the read lands here, which no test can time;
+    // it lists without a title.
+    /* node:coverage disable */
+  } catch {
+    return ''
+  }
+  /* node:coverage enable */
+}
+
 function infoOf(f: Found, now: number): SessionInfo {
   let title = ''
   let prompt = ''
   let cwd = ''
-  for (const raw of edges(f.path).split('\n')) {
+  for (const raw of readEdges(f.path).split('\n')) {
     const l = lineOf(raw)
     if (!l) continue
     if (l.type === 'custom-title' && typeof l.customTitle === 'string' && !PLACEHOLDER.has(l.customTitle)) title = l.customTitle
@@ -84,6 +97,10 @@ function infoOf(f: Found, now: number): SessionInfo {
 }
 
 export function listSessions(configs: string[], now: number): SessionInfo[] {
-  const recent = configs.flatMap(transcripts).sort((x, y) => y.mtime - x.mtime).slice(0, LIMIT)
+  // A copied config folder can hold the same session; the copy changed last is the one shown.
+  const seen = new Set<string>()
+  const recent = configs.flatMap(transcripts).sort((x, y) => y.mtime - x.mtime)
+    .filter((f) => !seen.has(f.id) && seen.add(f.id) !== undefined)
+    .slice(0, LIMIT)
   return recent.map((f) => infoOf(f, now)).sort((x, y) => Number(y.isLive) - Number(x.isLive) || y.lastAt - x.lastAt)
 }

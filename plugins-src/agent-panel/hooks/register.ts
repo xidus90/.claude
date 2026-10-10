@@ -3,7 +3,7 @@ import type { SessionInfo, Summary } from '../shared/summary.ts'
 import { blockBar, CARD_GAP, costBarSvg, costParts, crabRaster, crabSvg, layoutOf, paletteOf, STATUS_COLOR, statusParts, statusSvg, stripeSvg, tilesSvg, tokenParts, type BarPart, type Palette } from './art.ts'
 import { EMPTY_LOG, onSpawn, type SpawnLog } from './open.ts'
 import { costumeOf } from './sprites.ts'
-import { buildView, countsLine, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, listArgs, moreLine, OWN, parseResult, reportedCost, rowLine, scriptArgs, sessionLabel, sessionsOf, startError, statusLine, visibleRows, type Group, type LiveAgent, type Row, type View } from './view.ts'
+import { buildView, countsLine, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, isGone, listArgs, moreLine, OWN, parseResult, pickerOptions, reportedCost, rowLine, scriptArgs, sessionsOf, startError, statusLine, visibleRows, type Group, type LiveAgent, type Row, type View } from './view.ts'
 
 const PANE = 'agent-panel'
 // Measured in docs/.superpowers/smoke/2026-10-09-agent-panel-probe.md.
@@ -27,10 +27,11 @@ const expanded = new Set<string>()
 // The session picker: the others listed by the script, and the one picked.
 const LIST_MS = 10_000
 let sessions: SessionInfo[] = []
-let picked = OWN
+// Kept whole, so a session that drops out of the 20 newest stays picked.
+let picked: SessionInfo | null = null
 let lastList = Number.NEGATIVE_INFINITY
-
-const pickedOf = (): SessionInfo | undefined => sessions.find((s) => s.id === picked)
+// Says that the picked session is gone, until the next pick.
+let goneNotice = ''
 
 type TextUi = Pick<ElementTable, 'Box' | 'Text' | 'Button'>
 
@@ -62,15 +63,26 @@ async function refresh($: EngineInterface): Promise<void> {
     const now = await $.clock.now()
     if (now - lastList >= LIST_MS) {
       lastList = now
-      const list = sessionsOf(await $.process.run(listArgs(script, home, config), { timeoutMs: 20_000 }))
-      if (list) sessions = list.filter((s) => s.id !== session)
+      try {
+        const list = sessionsOf(await $.process.run(listArgs(script, home, config), { timeoutMs: 20_000 }))
+        if (list) sessions = list.filter((s) => s.id !== session)
+      } catch {
+        // A failed list keeps the last good one: the picker is a convenience, not a finding.
+      }
+      const current = picked
+      if (current) picked = sessions.find((s) => s.id === current.id) ?? current
     }
-    const other = pickedOf()
-    if (!other) picked = OWN
+    const other = picked
     const argv = other ? scriptArgs(script, other.id, other.cwd || cwd, other.config, tmp) : scriptArgs(script, session, cwd, config, tmp)
     const parsed = parseResult(await $.process.run(argv, { timeoutMs: 20_000 }))
-    if (parsed.summary) summary = parsed.summary
-    error = parsed.error
+    if (other && isGone(parsed.summary, other.id)) {
+      picked = null
+      goneNotice = `Sitzung „${other.title}“ ist nicht mehr da`
+      error = ''
+    } else {
+      if (parsed.summary) summary = parsed.summary
+      error = parsed.error
+    }
     // Live agents and the reported cost belong to this session alone.
     live = other ? [] : (await $.agent.list()).map((a) => ({ id: a.id, status: a.status }))
     reported = other ? null : reportedCost((await $.session.usage()).cost)
@@ -191,10 +203,10 @@ export const register: Register = (on) => {
     const redraw = () => $.ui.invalidate('ui.render')
     let v: View
     let now: number
-    const other = pickedOf()
+    const other = picked
     try {
       now = await $.clock.now()
-      v = buildView({ summary, live, reportedCostUsd: reported, costIncludesAgents: REPORTED_COST_INCLUDES_AGENTS, now, error, foreign: other ? { title: other.title, isLive: other.isLive } : null })
+      v = buildView({ summary, live, reportedCostUsd: reported, costIncludesAgents: REPORTED_COST_INCLUDES_AGENTS, now, error: error || goneNotice, foreign: other ? { title: other.title, isLive: other.isLive } : null })
     } catch (err) {
       return Text({ color: 'warning', children: [`⚠ ${err instanceof Error ? err.message : String(err)}`] })
     }
@@ -240,8 +252,8 @@ export const register: Register = (on) => {
         ? [table.Select({
             key: 'session',
             value: other ? other.id : OWN,
-            options: [{ value: OWN, label: 'Diese Sitzung' }, ...sessions.map((s) => ({ value: s.id, label: sessionLabel(s, now) }))],
-            onSelect: (value: string) => { picked = value; void refresh($) },
+            options: pickerOptions(sessions, picked, now),
+            onSelect: (value: string) => { goneNotice = ''; picked = value === OWN ? null : sessions.find((s) => s.id === value) ?? picked; void refresh($) },
           })]
         : []
       return Box({ flexDirection: 'column', children: [

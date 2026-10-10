@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { configsOf, listSessions } from '../cli/sessions.ts'
 import { tempDir } from './helpers.ts'
@@ -81,6 +81,23 @@ test('leaves out subagent transcripts and copes with missing or odd folders', ()
   // A folder named like a transcript is no session.
   mkdirSync(join(a, 'projects', 'C--r', 'dir.jsonl'))
   assert.deepEqual(listSessions([a, join(a, 'missing')], NOW).map((s) => s.id), ['lead'])
+})
+
+test('skips a transcript it cannot stat instead of failing the whole list', () => {
+  const a = tempDir()
+  session(a, 'C--r', 'good', [{ type: 'user' }], NOW - 1000)
+  // A link to nowhere named like a transcript: stat throws ENOENT on it.
+  symlinkSync(join(a, 'gone'), join(a, 'projects', 'C--r', 'dangling.jsonl'), 'junction')
+  assert.deepEqual(listSessions([a], NOW).map((s) => s.id), ['good'])
+})
+
+test('lists a session found in two config folders once, from the folder that changed it last', () => {
+  const a = tempDir()
+  const copy = tempDir()
+  session(a, 'C--r', 'same', [{ type: 'user' }], NOW - 1000)
+  session(copy, 'C--r', 'same', [{ type: 'user' }], NOW - 5000)
+  const list = listSessions([copy, a], NOW)
+  assert.deepEqual(list.map((s) => [s.id, s.config]), [['same', a]])
 })
 
 test('finds the config folders in the home, the own one first and none twice', () => {

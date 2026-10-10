@@ -399,7 +399,8 @@ const PICK_TEXT = 60
 
 export function sessionLabel(s: SessionInfo, now: number): string {
   const account = accountOf(s.config)
-  const cut = (text: string) => tidy(text).slice(0, PICK_TEXT)
+  // Whole characters: a cut through an emoji leaves half a surrogate pair, which the host refuses.
+  const cut = (text: string) => [...tidy(text)].slice(0, PICK_TEXT).join('')
   return `${s.isLive ? '●' : '○'} ${cut(s.title)} · ${cut(s.project)} · ${ageOf(now - s.lastAt)}${account ? ` · ${cut(account)}` : ''}`
 }
 
@@ -420,6 +421,15 @@ export function sessionsOf(r: { exitCode: number; stdout: string }): SessionInfo
     return null
   }
 }
+
+/** This session first; a picked one that dropped out of the 20 stays pickable right after it. */
+export function pickerOptions(sessions: SessionInfo[], picked: SessionInfo | null, now: number): { value: string; label: string }[] {
+  const kept = picked && !sessions.some((s) => s.id === picked.id) ? [picked] : []
+  return [{ value: OWN, label: 'Diese Sitzung' }, ...[...kept, ...sessions].map((s) => ({ value: s.id, label: sessionLabel(s, now) }))]
+}
+
+export const isGone = (summary: Summary | null, id: string): boolean =>
+  summary !== null && summary.problems.includes(`kein Transkript für Sitzung ${id}`)
 
 export function listArgs(script: string, home: string, config: string): string[] {
   return ['node', script, '--list', '--home', home, '--config', config]
