@@ -230,7 +230,7 @@ export const register: Register = (on) => {
             Button({ key: 'fold-all', plain: true, label: 'Alle einklappen', onPress: () => { for (const g of v.groups) collapsed.add(g.key); redraw() } }),
             Button({ key: 'open-all', plain: true, label: 'Alle ausklappen', onPress: () => { collapsed.clear(); redraw() } }),
           ] })] : []
-          const head = Box({ key: 'agents-head', flexDirection: 'row', justifyContent: 'space-between', columnGap: 2, children: [
+          const head = Box({ key: 'agents-head', flexDirection: 'row', justifyContent: 'space-between', columnGap: 2, marginTop: 1, children: [
             Button({ key: 'sec-agents', plain: true, label: `${isAgentsOpen ? '▾' : '▸'} Agents${isAgentsOpen ? '' : `   ${countsLine(v.status)}`}`, onPress: () => { isAgentsOpen = !isAgentsOpen; redraw() } }),
             ...(isWide ? tools : []),
           ] })
