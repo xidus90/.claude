@@ -112,9 +112,9 @@ test('leaves out block bar parts that round to no cell and clips the rest to the
 
 const cells = (bar: { text: string; color: string }[], color: string): number => bar.filter((s) => s.color === color).reduce((n, s) => n + s.text.length, 0)
 
-test('keeps a status that is worth a whole cell when earlier parts round up', () => {
-  // 1 of 11 agents failed: 10/11 of a cell, but the two halves before it round up and used to take its cell.
-  const bar = blockBar(statusParts({ running: 5, done: 5, failed: 1, aborted: 0 }), 10, '#999999')
+test('keeps a status worth a whole cell when the parts before it round up', () => {
+  // Two parts of 4.5 cells round up to 5 each; the part worth one cell after them still gets it.
+  const bar = blockBar(statusParts({ running: 9, done: 9, failed: 2, aborted: 0 }), 10, '#999999')
   assert.equal(cells(bar, STATUS_COLOR.failed), 1)
 })
 
