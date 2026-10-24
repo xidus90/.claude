@@ -252,6 +252,8 @@ DENY_BASH = [
 ALLOW_BASH = [
     "git status",
     'echo "git push"',
+    # the lead's cleanup at the end of a run
+    'pwsh -NoProfile -File "$HOME/.claude/scripts/claude-team.ps1" -Cleanup 20261024-120000',
     "git log --oneline -3",
     'git commit -m "handle -n in the parser"',
     "git commit -m -n",
@@ -439,6 +441,7 @@ DENY_PWSH = [
 
 ALLOW_PWSH = [
     "git status",
+    'pwsh -NoProfile -File "$HOME/.claude/scripts/claude-team.ps1" -Cleanup 20261024-120000',
     "Write-Host 'git push'",
     "Write-Host 'Remove-Item -Recurse x'",
     "Get-ChildItem -Recurse src | Select-Object Name",

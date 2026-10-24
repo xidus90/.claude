@@ -72,7 +72,7 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
    For each task that is ready: create its worktree first, then
    `[impl:<domain>] TN <task title>` and `[merge] TN` (blocked by the impl).
 3. **Chain of a root W**, in this order, each step a task and a teammate:
-   - `[impl]` or `[fix]` → `implementer-<domain>`.
+   - `[impl]` or `[fix]` → `implementer`.
    - `[verify:impl]` or `[verify:fix]` → `verifier`. Fail → new
      `[fix:<domain>] W` with the confirmed findings of `medium` or worse and
      the refuted claims in its description; confirmed `low` findings go to the
@@ -134,8 +134,11 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
 7. **Cleanup**, once the latest `[verify:final] F` passes. Run
    `git branch --no-merged <feature> --list "team/<run>/*"` and put its output
    into the description of `[cleanup]` (expected: only branches of parked
-   roots; anything else listed goes into the report). Spawn `cleaner`. When it reports done, tell the human the
-   feature branch is ready for push and pull request.
+   roots; anything else listed goes into the report). Then run, in the main
+   tree, `pwsh -NoProfile -File "$HOME/.claude/scripts/claude-team.ps1" -Cleanup <run>`.
+   Exit 0: complete `[cleanup]` and tell the human the feature branch is
+   ready for push and pull request. Exit 1: its output names what is left;
+   ask the human.
 
 ## Failures
 

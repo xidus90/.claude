@@ -54,7 +54,8 @@ one sentence in the `claim`. Never grade an exploitable security hole `low`. You
   or a root listed there without the event, is a confirmed defect.
   Every defect confirmed as `low` in the run's verdicts must appear in the
   report's `## Deferred findings (low)`; a missing one is a confirmed `medium`
-  defect.
+  defect. If the project's `AGENTS.md` names documentation or wiki pages, a
+  page the feature branch makes wrong is a confirmed `medium` defect.
 
 The gate log lives at `$TEAM_RUN_DIR/evidence/gate-<root>-<head>.txt`: line 1
 the full HEAD hash, line 2 the exit code, then the output. Write it and the

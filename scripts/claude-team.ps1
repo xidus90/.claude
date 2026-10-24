@@ -150,7 +150,7 @@ function Get-SettingsPath {
 function New-TeamSettings {
     <#
         The run's own settings file. Outside the run folder, because the
-        cleaner deletes that; the hooks and the team switch live only here,
+        cleanup deletes that; the hooks and the team switch live only here,
         so no other session ever loads them.
     #>
     [OutputType([string])]
@@ -263,6 +263,36 @@ function Get-CleanupLeftover {
     return @($left)
 }
 
+function Remove-TeamRun {
+    <#
+        Worktrees, merged team branches and the run folder, never by force.
+        A worktree with unsaved work stops it: only the human removes that,
+        and Get-CleanupLeftover then names what is left.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Repo,
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Feature
+    )
+    $run = Join-Path $Repo ".team-runs/$Name"
+    foreach ($wt in @(Get-ChildItem -LiteralPath (Join-Path $run 'worktrees') -Directory -ErrorAction SilentlyContinue)) {
+        git -C $Repo worktree remove $wt.FullName 2>&1 | Write-Host
+        if ($LASTEXITCODE -ne 0) {
+            git -C $wt.FullName status --porcelain | Write-Host
+            return
+        }
+    }
+    git -C $Repo worktree prune
+    foreach ($branch in @(git -C $Repo branch --merged $Feature --list "team/$Name/*" --format='%(refname:short)')) {
+        git -C $Repo branch -q -d $branch
+    }
+    Remove-Item -LiteralPath $run -Recurse
+    $runs = Join-Path $Repo '.team-runs'
+    if (@(Get-ChildItem -LiteralPath $runs -Force | Where-Object Name -NE '.gitignore').Count -eq 0) {
+        Remove-Item -LiteralPath $runs -Recurse
+    }
+}
+
 function Remove-ClosedSettings {
     param([Parameter(Mandatory)][string]$Settings, [Parameter(Mandatory)][string]$Run)
     if (-not (Test-Path -LiteralPath $Run) -and (Test-Path -LiteralPath $Settings)) {
@@ -314,12 +344,10 @@ function Invoke-ClaudeTeam {
         $settings = Get-SettingsPath -Repo $repo -Name $Cleanup
         $meta = Read-RunJson -Run $run
         $keep = @(git -C $repo branch --no-merged $meta.feature_branch --list "team/$Cleanup/*" --format='%(refname:short)')
-        $prompt = "Clean up the agent-team run $Cleanup in $($repo -replace '\\', '/'). Feature branch: $($meta.feature_branch). " +
-            "Unmerged branches to keep and report: $(if ($keep) { $keep -join ', ' } else { 'none' })."
-        $null = Invoke-WithoutEffortOverride -ArgumentList @('-p', '--agent', 'cleaner', '--settings', $settings,
-            '--permission-mode', 'auto', $prompt)
+        Remove-TeamRun -Repo $repo -Name $Cleanup -Feature $meta.feature_branch
         $left = @(Get-CleanupLeftover -Repo $repo -Name $Cleanup -Allowed $keep)
-        Remove-ClosedSettings -Settings $settings -Run $run
+        # A lead that cleans up its own run still runs on these settings; its starter removes them on exit.
+        if (-not $env:TEAM_RUN_DIR) { Remove-ClosedSettings -Settings $settings -Run $run }
         if ($left.Count -gt 0) {
             $left | ForEach-Object { Write-Host "left behind: $_" -ForegroundColor Red }
             return 1

@@ -140,23 +140,30 @@ Install-Skript stellt den Zustand daraus her.
 
 ## Agent-Team
 
-Ein Gespann aus dreizehn Rollen (`agents/`) baut einen freigegebenen Plan als
-Agent-Team bis zum PR-reifen Feature-Zweig. Entwurf:
+Acht Rollen (`agents/`) bauen einen freigegebenen Plan als Agent-Team bis zum
+PR-reifen Feature-Zweig: orchestrator, implementer, verifier, code-reviewer,
+security-reviewer, bug-hunter sowie explorer und researcher als Helfer. Der
+Plan entsteht mit dem Skill `/team-plan`. Entwurf:
 `docs/.superpowers/specs/2026-10-08-agent-team-design.md`.
+
+Modelle und Effort folgen den Coding-Benchmarks von Artificial Analysis
+(Stand 2026-10-24). Der implementer läuft auf Opus medium statt Sonnet xhigh:
+Auf FrontierCode und Terminal-Bench 4.0 erreicht Opus medium im Mittel
+54,8 % für $2,41 je Aufgabe, Sonnet xhigh 51,6 % für $3,64.
+
+**Desktop-App:** Agent-Teams gibt es nur in der CLI. In Desktop fehlen
+TaskCreate und TaskUpdate, also feuern die Hooks des Laufs dort nie. Geplant
+wird deshalb überall mit `/team-plan`, gebaut mit dem Starter im
+Terminal-Panel der Desktop-App.
 
 **Voraussetzungen:** git ≥ 2.56, `uv`, und im Projekt eine Datei
 `.claude/team-gate` mit einer Zeile: dem Befehl, der das Tor des Projekts
 fährt (Tests, Lint, Coverage). Der verifier führt ihn aus.
 
-**Planen** — im Projekt:
-
-```
-claude --agent planner --teammate-mode in-process
-```
-
-Der planner führt durch Brainstorming, Spec und Plan, lässt beides vom
-verifier prüfen, holt die Freigaben ein und committet Spec und Plan auf einem
-neuen Feature-Zweig.
+**Planen** — im Projekt, in der CLI oder in Desktop, mit Opus auf Effort
+`high`: `/team-plan`. Der Skill führt durch Brainstorming, Spec und Plan,
+lässt beides vom verifier prüfen, holt die Freigaben ein und committet Spec
+und Plan auf einem neuen Feature-Zweig.
 
 **Bauen** — auf dem Feature-Zweig, Arbeitsbaum sauber:
 
@@ -173,7 +180,9 @@ startet den Orchestrator als Lead. Push und Merge bleiben beim Menschen.
   das Fortsetzen (Exit 1), solange ein Prozess mit einer Sitzungs-ID des Laufs
   noch läuft: Zwei Leads legten dieselben Tasks an.
 - Lauf aufgeben und aufräumen: `claude-team.ps1 -Cleanup <lauf>` (Exit 1,
-  wenn etwas übrig bleibt)
+  wenn etwas übrig bleibt). Das ist reines PowerShell ohne Claude; der
+  Orchestrator ruft denselben Befehl am Ende des Laufs. Ein Worktree mit
+  ungesicherter Arbeit bleibt stehen, ungemergte Team-Zweige auch.
 
 Der Starter setzt `PYTHONDONTWRITEBYTECODE=1` für alle Sitzungen des Laufs,
 damit das Tor keine `__pycache__`-Ordner in den Worktrees hinterlässt. Andere

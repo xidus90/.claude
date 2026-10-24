@@ -1,6 +1,6 @@
 ---
 name: explorer
-description: Finds and summarises code for a question — where something lives, how a flow runs, who calls what — and answers with file:line references. Read-only. Use from the planner or the orchestrator.
+description: Finds and summarises code for a question — where something lives, how a flow runs, who calls what — and answers with file:line references. Read-only. Use from the team-plan skill or the orchestrator.
 tools: Read, Grep, Glob
 model: haiku
 effort: high

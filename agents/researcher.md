@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: Answers questions from documentation, the web and other outside sources — tool behaviour, library APIs, release notes, standards — with a URL for every fact. Use from the planner or the orchestrator.
+description: Answers questions from documentation, the web and other outside sources — tool behaviour, library APIs, release notes, standards — with a URL for every fact. Use from the team-plan skill or the orchestrator.
 tools: Read, Grep, Glob, WebSearch, WebFetch
 model: sonnet
 effort: high

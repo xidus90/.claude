@@ -101,6 +101,11 @@ Was das Design trägt:
 
 ## 3. Rollen
 
+> **Überholt am 2026-10-24.** Die vier Implementer sind eine Rolle
+> `implementer` (Opus medium), der cleaner ist `Remove-TeamRun` im Starter,
+> der planner ist der Skill `/team-plan`. Grund und Zahlen: README,
+> Abschnitt „Agent-Team“. Die Tabelle unten zeigt den Entwurf vom 2026-10-08.
+
 Dreizehn Definitionen unter `~/.claude/agents/<name>.md`. Rümpfe und
 Beschreibungen sind englisch (sie instruieren ein LLM). Die Werkzeugspalte
 nennt, was die Definition festlegt; als Teammate kommen `SendMessage` und die

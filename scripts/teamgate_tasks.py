@@ -513,7 +513,7 @@ def on_completed(run: Run, payload: Payload, wait_marker: bool = False) -> list[
     task_id, subject = _str(payload, "task_id"), _str(payload, "task_subject")
     title = parse_title(subject)
     if title is not None and title.kind == "cleanup":
-        # No lock, no register, no status.md: the cleaner has removed the run folder.
+        # No lock, no register, no status.md: the cleanup has removed the run folder.
         return check_cleanup(run, payload)
     if not run.exists():
         return [f"the run is closed: {run.dir} is missing"]

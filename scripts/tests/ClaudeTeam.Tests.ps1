@@ -299,23 +299,39 @@ Describe 'Invoke-ClaudeTeam' {
         Invoke-ClaudeTeam -Plan 'docs/plan.md' | Should -Be 0
         @(Get-ChildItem (Join-Path $TestDrive 'settings') -ErrorAction SilentlyContinue | Where-Object Name -Like '2*') | Should -HaveCount 0
     }
-    It 'cleans up through the cleaner and exits 0 when nothing is left' {
+    It 'cleans up without claude and exits 0 when nothing is left' {
         $run = New-TeamRun -Repo $Repo -Plan 'docs/plan.md' -Name 'r1'
-        Mock Invoke-ClaudeProcess { $script:Argv = $ArgumentList; Remove-Item -Recurse -Force $run; 0 }
+        git -C $Repo worktree add -q --track -b team/r1/T1 "$run/worktrees/T1" feat/x
+        git -C $Repo worktree add -q --detach "$run/worktrees/R1.P1" feat/x
         Invoke-ClaudeTeam -Cleanup 'r1' | Should -Be 0
-        $Argv[0..2] -join ' ' | Should -Be '-p --agent cleaner'
-        $Argv | Should -Contain 'auto'
-        $Argv[-1] | Should -Match 'Unmerged branches to keep and report: none'
+        Should -Invoke Invoke-ClaudeProcess -Times 0
+        @(git -C $Repo branch --list 'team/r1/*') | Should -HaveCount 0
+        "$Repo/.team-runs" | Should -Not -Exist
     }
-    It 'exits 1 and names what the cleaner left' {
+    It 'keeps an unmerged team branch and still exits 0' {
         $run = New-TeamRun -Repo $Repo -Plan 'docs/plan.md' -Name 'r1'
         git -C $Repo worktree add -q --track -b team/r1/T1 "$run/worktrees/T1" feat/x
         git -C "$run/worktrees/T1" commit -q --allow-empty -m wip
+        Invoke-ClaudeTeam -Cleanup 'r1' | Should -Be 0
+        git -C $Repo branch --list 'team/r1/*' --format='%(refname:short)' | Should -Be 'team/r1/T1'
+        $run | Should -Not -Exist
+    }
+    It 'exits 1 and leaves a worktree with unsaved work alone' {
+        $run = New-TeamRun -Repo $Repo -Plan 'docs/plan.md' -Name 'r1'
+        git -C $Repo worktree add -q --track -b team/r1/T1 "$run/worktrees/T1" feat/x
+        Set-Content -LiteralPath "$run/worktrees/T1/unsaved.txt" -Value x
         Invoke-ClaudeTeam -Cleanup 'r1' | Should -Be 1
-        $left = @(Get-CleanupLeftover -Repo $Repo -Name 'r1' -Allowed @('team/r1/T1'))
-        $left | Should -HaveCount 2
+        "$run/worktrees/T1/unsaved.txt" | Should -Exist
+        $left = @(Get-CleanupLeftover -Repo $Repo -Name 'r1')
         $left[0] | Should -BeLike 'worktree *worktrees/T1'
-        $left[1] | Should -BeLike 'folder *r1'
+        $left[-1] | Should -BeLike 'folder *r1'
+    }
+    It 'keeps the settings when the lead of the run cleans up itself' {
+        $run = New-TeamRun -Repo $Repo -Plan 'docs/plan.md' -Name 'r1'
+        $settings = New-TeamSettings -Repo $Repo -Run $run -Name 'r1'
+        $env:TEAM_RUN_DIR = $run
+        try { Invoke-ClaudeTeam -Cleanup 'r1' | Should -Be 0 } finally { $env:TEAM_RUN_DIR = $null }
+        $settings | Should -Exist
     }
     It 'refuses to clean up a run that does not exist' {
         Invoke-ClaudeTeam -Cleanup 'nope' | Should -Be 1

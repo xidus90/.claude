@@ -1,4 +1,4 @@
-"""The thirteen role definitions under agents/ match the table of spec section 3."""
+"""The role definitions under agents/ match the table of spec section 3."""
 
 from __future__ import annotations
 
@@ -19,21 +19,15 @@ JUDGE_TOOLS = ["Read", "Grep", "Glob", "Bash", "Write", "Skill"]
 
 # name: (model, effort, tools, skills the body must invoke)
 TABLE: dict[str, tuple[str, str, list[str], set[str]]] = {
-    "planner": ("opus", "high", ["Read", "Grep", "Glob", "Bash", "Write", "Edit", "Agent", "Skill", "AskUserQuestion"],
-                {"superpowers:brainstorming", "superpowers:writing-plans"}),
     "orchestrator": ("opus", "medium", ["Read", "Grep", "Glob", "Bash", "Write", "Edit", "Agent", "SendMessage", "TaskCreate",
                                         "TaskGet", "TaskList", "TaskUpdate", "Skill", "AskUserQuestion"], set()),
     "explorer": ("haiku", "high", ["Read", "Grep", "Glob"], set()),
     "researcher": ("sonnet", "high", ["Read", "Grep", "Glob", "WebSearch", "WebFetch"], set()),
-    "implementer-infra": ("sonnet", "xhigh", IMPL_TOOLS, IMPL_SKILLS),
-    "implementer-backend": ("sonnet", "xhigh", IMPL_TOOLS, IMPL_SKILLS),
-    "implementer-frontend": ("sonnet", "xhigh", IMPL_TOOLS, IMPL_SKILLS),
-    "implementer-ux": ("sonnet", "xhigh", IMPL_TOOLS, IMPL_SKILLS),
+    "implementer": ("opus", "medium", IMPL_TOOLS, IMPL_SKILLS),
     "code-reviewer": ("opus", "medium", JUDGE_TOOLS, {"superpowers:receiving-code-review"}),
     "security-reviewer": ("opus", "high", JUDGE_TOOLS, {"vulnhunt", "security-review"}),
     "bug-hunter": ("opus", "high", JUDGE_TOOLS, {"vulnhunt"}),
     "verifier": ("opus", "high", ["Read", "Grep", "Glob", "Bash", "Write"], set()),
-    "cleaner": ("haiku", "high", ["Read", "Glob", "Bash"], set()),
 }
 
 KNOWN_TOOLS = {
@@ -64,7 +58,7 @@ def skill_exists(name: str) -> bool:
     return (CLAUDE_HOME / "skills" / name / "SKILL.md").is_file()
 
 
-def test_there_are_exactly_the_thirteen_roles() -> None:
+def test_there_are_exactly_the_roles_of_the_table() -> None:
     assert sorted(p.stem for p in AGENTS.glob("*.md")) == sorted(TABLE)
 
 
@@ -98,3 +92,11 @@ def test_roles_that_handle_verdicts_point_at_the_reference(name: str) -> None:
 def test_no_body_names_a_skill_by_its_versioned_path() -> None:
     for path in AGENTS.glob("*.md"):
         assert "plugins/cache" not in path.read_text(encoding="utf-8"), path.name
+
+
+def test_the_plan_phase_is_a_skill_that_loads_in_cli_and_desktop() -> None:
+    meta, body = split(REPO / "skills" / "team-plan" / "SKILL.md")
+    assert (meta["name"], meta["model"], meta["effort"]) == ("team-plan", "opus", "high")
+    assert set(SKILL_CALL.findall(body)) == {"superpowers:brainstorming", "superpowers:writing-plans"}
+    assert all(skill_exists(s) for s in SKILL_CALL.findall(body))
+    assert "claude-team.ps1" in body
