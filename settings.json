@@ -6,7 +6,11 @@
   "permissions": {
     "defaultMode": "auto"
   },
-  "model": "opus",
+  "model": "haiku",
+  "skillOverrides": {
+    "vulnhunter-fix": "off",
+    "vulnhunt-fix-verify": "off"
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -28,6 +32,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -36,6 +50,139 @@
           {
             "type": "command",
             "command": "pwsh -NoProfile -Command \"& (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.claude/scripts/write-cc-version.ps1')\""
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "TeammateIdle": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/micro/.orca/agent-hooks/claude-hook.cmd",
+            "timeout": 10
           }
         ]
       }
@@ -49,14 +196,13 @@
     "superpowers@claude-plugins-official": true,
     "frontend-design@claude-plugins-official": false,
     "mcp-server-dev@claude-plugins-official": false,
-    "code-review@claude-plugins-official": true,
-    "security-guidance@claude-plugins-official": true,
+    "code-review@claude-plugins-official": false,
+    "security-guidance@claude-plugins-official": false,
     "browser-use@browser-use": false,
     "antigravity@antigravity-for-claude-code": true,
     "gopls-lsp@claude-plugins-official": true,
     "telemetry@builtin": false,
     "ponytail@ponytail": true,
-    "savvy-progress@claude-kit": true,
     "savvy-flow@claude-kit": false,
     "agent-panel@claude-config": true
   },
@@ -102,7 +248,7 @@
   },
   "outputStyle": "Concise",
   "language": "Deutsch",
-  "effortLevel": "low",
+  "effortLevel": "medium",
   "modelSettings": {
     "claude-opus-5": {
       "effortLevel": "medium"
@@ -111,10 +257,13 @@
       "effortLevel": "medium"
     },
     "claude-sonnet-5-5": {
-      "effortLevel": "low"
+      "effortLevel": "high"
+    },
+    "claude-haiku-5-5": {
+      "effortLevel": "xhigh"
     }
   },
-  "advisorModel": "fable",
+  "advisorModel": "opus",
   "dialogExpiry": "60s",
   "pluginConfigs": {
     "agents-md@builtin": {
@@ -133,7 +282,7 @@
   "skipWorkflowUsageWarning": true,
   "editorMode": "normal",
   "switchModelsOnFlag": false,
-  "teammateMode": "tmux",
+  "teammateMode": "in-process",
   "remoteControlAtStartup": true,
   "inputNeededNotifEnabled": true,
   "agentPushNotifEnabled": true,
