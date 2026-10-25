@@ -1,0 +1,274 @@
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { appendFileSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { applyLines, emptyState, endOf, readTranscript, totals } from '../cli/transcript.ts'
+import { apiError, assistant, tempDir, user } from './helpers.ts'
+
+const read = (text: string) => applyLines(emptyState(), text)
+
+test('counts only the last line of a streamed message', () => {
+  const s = read(
+    assistant({ id: 'm1', stop: null, usage: { input_tokens: 2, output_tokens: 5, cache_read_input_tokens: 100 } }) +
+      assistant({ id: 'm1', stop: 'tool_use', usage: { input_tokens: 2, output_tokens: 234, cache_read_input_tokens: 100 } }),
+  )
+  assert.deepEqual(totals(s).tokens, { input: 2, output: 234, cacheRead: 100, cacheWrite5m: 0, cacheWrite1h: 0 })
+})
+
+test('adds distinct messages and lines without an id', () => {
+  const s = read(assistant({ id: 'm1' }) + assistant({ id: 'm2' }) + assistant({}) + assistant({}))
+  assert.equal(totals(s).tokens.output, 80)
+})
+
+test('splits cache writes by duration, and counts an undivided write as five minutes', () => {
+  const s = read(
+    assistant({ id: 'a', usage: { cache_creation_input_tokens: 30, cache_creation: { ephemeral_5m_input_tokens: 10, ephemeral_1h_input_tokens: 20 } } }) +
+      assistant({ id: 'b', usage: { cache_creation_input_tokens: 7 } }) +
+      assistant({ id: 'c', usage: { cache_creation: {} } }),
+  )
+  assert.deepEqual(totals(s).tokens, { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 17, cacheWrite1h: 20 })
+})
+
+test('prices each message by its own model and flags an unpriced one', () => {
+  const s = read(
+    assistant({ id: 'a', model: 'claude-opus-5-5', usage: { output_tokens: 1_000_000 } }) +
+      assistant({ id: 'b', model: 'opus' }) +
+      assistant({ id: 'c', usage: { output_tokens: 0 } }),
+  )
+  const t = totals(s)
+  assert.equal(t.costUsd, 20)
+  assert.equal(t.unpriced, true)
+  assert.equal(t.tokens.output, 1_000_020)
+})
+
+test('flags an unpriced message that is still streaming', () => {
+  assert.equal(totals(read(assistant({ id: 'a', model: 'opus' }))).unpriced, true)
+  assert.equal(totals(read(assistant({ id: 'a' }))).unpriced, false)
+})
+
+test('ignores synthetic lines and assistant lines without a message', () => {
+  const s = read(assistant({ id: 'a' }) + assistant({ id: 's', model: '<synthetic>' }) + JSON.stringify({ type: 'assistant' }) + '\n')
+  assert.equal(totals(s).tokens.output, 20)
+  assert.equal(s.model, 'claude-opus-5-5')
+})
+
+test('is answered once any message ended its turn', () => {
+  assert.equal(endOf(read(assistant({ id: 'a', stop: 'tool_use' }))), 'open')
+  assert.equal(endOf(read(assistant({ id: 'a' }) + user() + assistant({ id: 'b', stop: null }) + user())), 'answered')
+})
+
+test('is an error while the last assistant line is an API error, with its text', () => {
+  const s = read(assistant({ id: 'a' }) + apiError("You've hit your session limit · resets 10:50pm"))
+  assert.equal(endOf(s), 'error')
+  assert.equal(s.errorText, "You've hit your session limit · resets 10:50pm")
+  assert.equal(endOf(applyLines(s, assistant({ id: 'b' }))), 'answered')
+})
+
+test('keeps the error text short and copes with an error without text', () => {
+  assert.equal(read(apiError('x'.repeat(200))).errorText.length, 80)
+  const bare = JSON.stringify({ type: 'assistant', isApiErrorMessage: true, message: { content: 'not a list' } }) + '\n'
+  assert.equal(read(bare).errorText, 'API-Fehler')
+  const noText = JSON.stringify({ type: 'assistant', isApiErrorMessage: true, message: { content: [null, 'x', { type: 'image' }] } }) + '\n'
+  assert.equal(read(noText).errorText, 'API-Fehler')
+})
+
+test('tracks first and last time and skips lines without a valid time', () => {
+  const s = read(user('2026-10-09T10:00:00.000Z') + JSON.stringify({ type: 'system', timestamp: 'nonsense' }) + '\n' + assistant({ id: 'a', at: '2026-10-09T10:05:00.000Z' }))
+  assert.equal(s.firstAt, Date.parse('2026-10-09T10:00:00.000Z'))
+  assert.equal(s.lastAt, Date.parse('2026-10-09T10:05:00.000Z'))
+})
+
+test('counts unreadable lines and reads on', () => {
+  const s = read('{"type":\n' + '\n' + assistant({ id: 'a' }))
+  assert.equal(s.unreadable, 1)
+  assert.equal(totals(s).tokens.output, 20)
+})
+
+test('counts a line that is valid JSON but not an object as unreadable', () => {
+  for (const raw of ['null', '42', '"text"', 'true', '[]', '[{"type":"assistant"}]']) {
+    const s = read(raw + '\n' + assistant({ id: 'a' }))
+    assert.equal(s.unreadable, 1, raw)
+    assert.equal(totals(s).tokens.output, 20, raw)
+  }
+})
+
+test('reads only new bytes, and leaves a half-written last line for later', () => {
+  const dir = tempDir()
+  const file = join(dir, 't.jsonl')
+  const second = assistant({ id: 'm2' })
+  writeFileSync(file, assistant({ id: 'm1' }) + second.slice(0, 15))
+  const s1 = readTranscript(file, emptyState())
+  assert.equal(totals(s1).tokens.output, 20)
+  appendFileSync(file, second.slice(15))
+  const s2 = readTranscript(file, s1)
+  assert.equal(totals(s2).tokens.output, 40)
+  assert.equal(readTranscript(file, s2), s2)
+})
+
+test('replaces a message whose lines span two reads', () => {
+  const dir = tempDir()
+  const file = join(dir, 't.jsonl')
+  writeFileSync(file, assistant({ id: 'm1', stop: null, usage: { output_tokens: 5 } }))
+  const s1 = readTranscript(file, emptyState())
+  appendFileSync(file, assistant({ id: 'm1', usage: { output_tokens: 234 } }))
+  assert.equal(totals(readTranscript(file, s1)).tokens.output, 234)
+})
+
+test('keeps byte offsets right across multibyte text', () => {
+  const dir = tempDir()
+  const file = join(dir, 't.jsonl')
+  const umlaut = JSON.stringify({ type: 'user', timestamp: '2026-10-09T10:00:00.000Z', message: { content: 'Prüfung über Größe' } }) + '\n'
+  writeFileSync(file, umlaut + assistant({ id: 'a' }))
+  const s1 = readTranscript(file, emptyState())
+  appendFileSync(file, umlaut + assistant({ id: 'b' }))
+  const s2 = readTranscript(file, s1)
+  assert.equal(s2.unreadable, 0)
+  assert.equal(totals(s2).tokens.output, 40)
+})
+
+test('rereads a file that shrank', () => {
+  const dir = tempDir()
+  const file = join(dir, 't.jsonl')
+  writeFileSync(file, assistant({ id: 'a' }) + assistant({ id: 'b' }))
+  const s1 = readTranscript(file, emptyState())
+  writeFileSync(file, assistant({ id: 'c', usage: { output_tokens: 1 } }))
+  assert.equal(totals(readTranscript(file, s1)).tokens.output, 1)
+})
+
+test('reads a file without any complete line as nothing yet', () => {
+  const dir = tempDir()
+  const file = join(dir, 't.jsonl')
+  writeFileSync(file, '{"type":"assis')
+  const s = readTranscript(file, emptyState())
+  assert.equal(s.offset, 0)
+  assert.equal(totals(s).tokens.output, 0)
+})
+
+test('refuses a directory instead of reading it as empty', () => {
+  assert.throws(() => readTranscript(tempDir(), emptyState()), /ist ein Ordner/)
+})
+
+test('matches the independent tally of a real teammate transcript', () => {
+  const s = readTranscript(join(import.meta.dirname, 'fixtures', 'teammate.jsonl'), emptyState())
+  const t = totals(s)
+  assert.deepEqual(t.tokens, { input: 68, output: 3517, cacheRead: 1430684, cacheWrite5m: 163348, cacheWrite1h: 0 })
+  assert.ok(Math.abs(t.costUsd - 0.5867444) < 1e-9)
+  assert.equal(s.model, 'claude-sonnet-5-5')
+  assert.equal(s.firstAt, 1791548983015)
+  assert.equal(s.lastAt, 1791549963815)
+  assert.equal(endOf(s), 'answered')
+})
+
+test('remembers the last effort a line names', () => {
+  const lines = [
+    JSON.stringify({ type: 'user', effort: 'low', timestamp: '2026-10-09T10:00:00.000Z' }),
+    JSON.stringify({ type: 'assistant', effort: 'medium', message: { id: 'a', model: 'claude-opus-5-5', stop_reason: 'end_turn', usage: { output_tokens: 1 } } }),
+    JSON.stringify({ type: 'system' }),
+    JSON.stringify({ type: 'user', effort: '' }),
+  ].join('\n') + '\n'
+  assert.equal(applyLines(emptyState(), lines).effort, 'medium')
+  assert.equal(emptyState().effort, '')
+})
+
+const rawModel = (id: string, model: unknown) =>
+  JSON.stringify({ type: 'assistant', message: { id, model, stop_reason: 'end_turn', usage: { output_tokens: 20 } } }) + '\n'
+
+test('treats a model that is not a string as unpriced, on the newest line', () => {
+  const s = read(assistant({ id: 'a' }) + rawModel('b', 5))
+  const t = totals(s)
+  assert.equal(t.tokens.output, 40)
+  assert.equal(t.unpriced, true)
+  assert.equal(s.model, '')
+})
+
+test('treats a model that is not a string as unpriced, once a later message settles it', () => {
+  const s = read(rawModel('a', { name: 'opus' }) + assistant({ id: 'b' }))
+  const t = totals(s)
+  assert.equal(t.tokens.output, 40)
+  assert.equal(t.unpriced, true)
+  assert.equal(s.model, 'claude-opus-5-5')
+})
+
+test('flags a prototype-named model as unpriced and keeps the cost finite', () => {
+  const t = totals(read(assistant({ id: 'a', model: 'constructor' }) + assistant({ id: 'b', model: 'claude-opus-5-5', usage: { output_tokens: 1_000_000 } })))
+  assert.equal(t.unpriced, true)
+  assert.equal(t.costUsd, 20)
+})
+
+// JSON text, not values: 1e999 and the odd shapes must reach the parser as written.
+const BAD_COUNTS = ['1e999', '-1e999', '1e308', '9007199254740992', '"7"', '"NaN"', '-5', '1.5', 'null', 'true', '[5]', '{}', '{"toString":0}', '{"valueOf":0,"toString":0}']
+const withCount = (usage: Record<string, unknown>, count: string) => assistant({ id: 'm1', usage }).replaceAll('"@@"', count)
+
+test('counts a token count that is not a safe non-negative integer as 0, in every field', () => {
+  const flat = { input_tokens: '@@', output_tokens: '@@', cache_read_input_tokens: '@@', cache_creation_input_tokens: '@@' }
+  const split = { cache_creation: { ephemeral_5m_input_tokens: '@@', ephemeral_1h_input_tokens: '@@' } }
+  for (const bad of BAD_COUNTS) {
+    for (const usage of [flat, split]) {
+      assert.deepEqual(totals(read(withCount(usage, bad))).tokens, { input: 0, output: 0, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 }, bad)
+    }
+  }
+})
+
+test('prices a message from its valid counts when another one is dropped', () => {
+  for (const bad of BAD_COUNTS) {
+    const t = totals(read(withCount({ input_tokens: '@@', output_tokens: 1_000_000 }, bad)))
+    assert.equal(t.costUsd, 20, bad)
+    assert.equal(t.unpriced, false, bad)
+    assert.equal(t.tokens.output, 1_000_000, bad)
+  }
+})
+
+test('keeps a dropped count out of the totals once a later message settles it', () => {
+  const s = read(withCount({ input_tokens: '@@', output_tokens: 5 }, '{"toString":0}') + assistant({ id: 'm2' }))
+  assert.deepEqual(totals(s).tokens, { input: 10, output: 25, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 })
+})
+
+test('accepts the largest safe count and keeps the cost finite', () => {
+  const t = totals(read(withCount({ input_tokens: '@@' }, String(Number.MAX_SAFE_INTEGER))))
+  assert.equal(t.tokens.input, Number.MAX_SAFE_INTEGER)
+  assert.ok(Number.isFinite(t.costUsd))
+})
+
+test('a timestamp that is not a string counts as missing instead of throwing', () => {
+  const s = read(JSON.stringify({ type: 'user', timestamp: { toString: 0 } }) + '\n' + JSON.stringify({ type: 'user', timestamp: { valueOf: 0, toString: 0 } }) + '\n')
+  assert.equal(s.firstAt, null)
+})
+
+// A message with an advisor call, as Claude Code writes it: the top-level usage holds only the executor's turns.
+const ADVISED = {
+  input_tokens: 4, output_tokens: 527, cache_read_input_tokens: 184497, cache_creation_input_tokens: 2337,
+  cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 1001 },
+  iterations: [
+    { type: 'message', input_tokens: 2, output_tokens: 250, cache_read_input_tokens: 91748, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 1001 } },
+    { type: 'advisor_message', model: 'claude-fable-5-1', input_tokens: 96234, output_tokens: 4404, cache_read_input_tokens: 0, cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 0 } },
+    { type: 'message', input_tokens: 2, output_tokens: 277, cache_read_input_tokens: 92749, cache_creation: { ephemeral_5m_input_tokens: 1336, ephemeral_1h_input_tokens: 0 } },
+  ],
+}
+
+test('prices every iteration of a message by its own model, the advisor call included', () => {
+  const t = totals(read(assistant({ id: 'm1', model: 'claude-opus-5-5', usage: ADVISED })))
+  assert.deepEqual(t.tokens, { input: 96238, output: 4931, cacheRead: 184497, cacheWrite5m: 1336, cacheWrite1h: 1001 })
+  // Opus 5.5 for the two executor turns, Fable 5.1 for the advisor.
+  const opus = (4 * 4 + 527 * 20 + 184497 * 0.2 + 1336 * 5 + 1001 * 8) / 1e6
+  const fable = (96234 * 10 + 4404 * 50) / 1e6
+  assert.ok(Math.abs(t.costUsd - (opus + fable)) < 1e-9, String(t.costUsd))
+  assert.equal(t.unpriced, false)
+})
+
+test('an iteration of an unknown model leaves the message unpriced, and a bad iteration list is ignored', () => {
+  const unknown = { ...ADVISED, iterations: [{ type: 'advisor_message', model: 'claude-x-9', input_tokens: 5 }, null, 'x'] }
+  assert.equal(totals(read(assistant({ id: 'm1', model: 'claude-opus-5-5', usage: unknown }))).unpriced, true)
+  const notList = { input_tokens: 1, output_tokens: 2, iterations: 'many' }
+  assert.deepEqual(totals(read(assistant({ id: 'm1', model: 'claude-opus-5-5', usage: notList }))).tokens, { input: 1, output: 2, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 })
+})
+
+test('a subagent that hands its report back has answered, though it stops on a tool call', () => {
+  const handback = (name: string, content: unknown) => JSON.stringify({
+    type: 'assistant',
+    message: { id: 'h1', model: 'claude-haiku-5-5', stop_reason: null, usage: { output_tokens: 3 }, content },
+  }) + '\n'
+  assert.equal(endOf(read(handback('', [{ type: 'tool_use', name: 'SubagentHandback', input: { message: 'hi' } }]))), 'answered')
+  assert.equal(endOf(read(handback('', [{ type: 'tool_use', name: 'Write', input: {} }]))), 'open')
+  assert.equal(endOf(read(handback('', 'text'))), 'open')
+  assert.equal(endOf(read(handback('', [null, 'x']))), 'open')
+})

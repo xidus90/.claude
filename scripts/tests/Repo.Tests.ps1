@@ -33,13 +33,17 @@ Describe 'README' {
     It 'records that plugin state files are deliberately not versioned' {
         $script:Readme | Should -Match 'installed_plugins\.json'
     }
+    It 'documents how to start an agent-team run' {
+        # Without the starter line and the gate file nobody finds the way in.
+        $script:Readme | Should -Match 'claude-team\.ps1'
+        $script:Readme | Should -Match '\.claude/team-gate'
+    }
 }
 
 Describe 'global CLAUDE.md' {
     It 'requires specs and plans to live in the project repo' {
         $claudeMd = Get-Content (Join-Path $script:RepoRoot 'CLAUDE.md') -Raw
-        $claudeMd | Should -Match 'docs/superpowers/specs'
-        $claudeMd | Should -Match 'docs/superpowers/plans'
+        $claudeMd | Should -Match 'docs/\.superpowers/'
     }
 }
 
@@ -99,7 +103,8 @@ Describe 'the tracked set' {
 
         $allowedFiles = @('.gitignore', '.gitattributes', 'README.md', 'CLAUDE.md',
                           'settings.json', 'keybindings.json')
-        $allowedRoots = @('skills/', 'agents/', 'statusline/', 'scripts/', 'docs/')
+        $allowedRoots = @('skills/', 'agents/', 'statusline/', 'scripts/', 'docs/',
+                          'plugins-src/', '.claude-plugin/')
 
         foreach ($file in $tracked) {
             $ok = ($allowedFiles -contains $file) -or

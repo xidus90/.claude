@@ -53,8 +53,8 @@ Describe 'tracked content' {
     }
 
     It 'tracks nothing outside the permitted set' {
-        $permittedFiles = @('.gitignore', 'README.md', 'CLAUDE.md', 'settings.json', 'keybindings.json')
-        $permittedRoots = @('skills', 'agents', 'statusline', 'scripts', 'docs')
+        $permittedFiles = @('.gitignore', '.gitattributes', 'README.md', 'CLAUDE.md', 'settings.json', 'keybindings.json')
+        $permittedRoots = @('skills', 'agents', 'statusline', 'scripts', 'docs', 'plugins-src', '.claude-plugin')
 
         $offenders = @($script:TrackedFiles | Where-Object {
                 $path = $_
@@ -86,6 +86,7 @@ Describe 'gitignore allowlist' {
             @{ Path = 'plugins/cache/some-plugin/skill.md' }
             @{ Path = 'settings.local.json' }
             @{ Path = 'statusline/.cc-version' }
+            @{ Path = 'plugins-src/agent-panel/node_modules/typescript/package.json' }
         )
         It 'ignores <Path>' -ForEach $cases {
             Test-PathIgnored $Path | Should -BeTrue
@@ -105,6 +106,8 @@ Describe 'gitignore allowlist' {
             @{ Path = 'statusline/cship.toml' }
             @{ Path = 'scripts/install.ps1' }
             @{ Path = 'docs/superpowers/specs/spec.md' }
+            @{ Path = 'plugins-src/agent-panel/hooks/register.ts' }
+            @{ Path = '.claude-plugin/marketplace.json' }
         )
         It 'does not ignore <Path>' -ForEach $cases {
             Test-PathIgnored $Path | Should -BeFalse

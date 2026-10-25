@@ -1,0 +1,11 @@
+{
+  "name": "claude-config",
+  "owner": { "name": "Christoph Wübbels" },
+  "plugins": [
+    {
+      "name": "agent-panel",
+      "source": "./plugins-src/agent-panel",
+      "description": "Side panel with cost, tokens, time and status of every agent the session spawned"
+    }
+  ]
+}

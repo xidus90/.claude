@@ -43,7 +43,7 @@ Describe 'Get-EnabledPlugin' {
 
     It 'reads the real settings.json of this repo' {
         $real = Join-Path $script:RepoRoot 'settings.json'
-        Get-EnabledPlugin -SettingsPath $real | Should -Contain 'browser-use@browser-use'
+        Get-EnabledPlugin -SettingsPath $real | Should -Contain 'agent-panel@claude-config'
     }
 }
 
@@ -55,6 +55,16 @@ Describe 'Get-MarketplaceForPlugin' {
     It 'maps browser-use to its own marketplace' {
         Get-MarketplaceForPlugin -Plugin 'browser-use@browser-use' |
             Should -Be 'https://github.com/browser-use/plugins.git'
+    }
+    It 'maps the plugins of this repo to the repo itself' {
+        Get-MarketplaceForPlugin -Plugin 'agent-panel@claude-config' | Should -Be $script:RepoRoot
+    }
+    It 'maps the third-party plugins to their own marketplaces' -ForEach @(
+        @{ Plugin = 'antigravity@antigravity-for-claude-code'; Source = 'yuting0624/antigravity-for-claude-code' }
+        @{ Plugin = 'ponytail@ponytail'; Source = 'DietrichGebert/ponytail' }
+        @{ Plugin = 'savvy-progress@claude-kit'; Source = 'https://github.com/johnnyvizz/claude-kit.git' }
+    ) {
+        Get-MarketplaceForPlugin -Plugin $Plugin | Should -Be $Source
     }
     It 'returns nothing for a marketplace it does not know' {
         # Better to install nothing than to guess a URL and register a
