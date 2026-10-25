@@ -549,7 +549,7 @@ test('an open role card keeps its crab at the size of a folded one', async ($, o
   // The rows beside it would squeeze it otherwise.
   expect(crab?.props.flexShrink).toBe(0)
   const svg = (crab?.children ?? []).find((c) => typeof c === 'object' && c !== null && (c as { type?: string }).type === 'Svg') as { props: Record<string, unknown> } | undefined
-  expect([svg?.props.width, svg?.props.height]).toEqual([36, 34])
+  expect([svg?.props.width, svg?.props.height]).toEqual([30, 28])
 })
 
 test('the role cards keep a line of space between them, and the Agents block one above its rule', async ($, on) => {
@@ -778,4 +778,62 @@ test('the session picker stands on a row of its own under the title, right-align
   ui = await $.ui.mount(WIDE('terminal'))
   expect(await head()).not.toContain('"session"')
   expect((await ui.find({ key: 'picker-row' }))?.props.justifyContent).toBe('flex-end')
+})
+
+const BAND = { plugin: 'agent-panel', component: 'AbovePrompt', surface: 'terminal', viewport: { columns: 160, rows: 40 }, props: { bodyColumns: 80, hasSurvey: false } } as const
+
+test('the band above the prompt names the agents and opens the pane', async ($, on) => {
+  const clock = mock.clock(on)
+  const opened: string[] = []
+  const closed: string[] = []
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), opened, closed, [])
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  await $.command.run(TOGGLE)
+  const ui = await $.ui.mount(BAND)
+  expect(await ui.find({ type: 'Text', text: /^Agents · ● 0  ✓ 1  ✗ 0 · ≈ \$0\.05$/ })).toBeDefined()
+  await ui.press({ key: 'band-open' })
+  expect(opened).toEqual(['agent-panel', 'agent-panel'])
+  expect(closed).toEqual(['agent-panel'])
+})
+
+test('the band stays out before the panel opened and while the session has no agent', async ($, on) => {
+  const clock = mock.clock(on)
+  // Beneath the plugin the engine's own band stands in: a line of its own, no agent button.
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => $.ui.resolve(e).Text({ children: ['Engine-Zeile'] }))
+  stub(on, [], () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [])
+  await $.session.start(START)
+  const bandOf = () => $.ui.mount(BAND).then((ui) => ui.find({ key: 'band-open' }), () => undefined)
+  expect(await bandOf()).toBeUndefined()
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  expect(await bandOf()).toBeUndefined()
+})
+
+test('a role card body may not outgrow its card, so a bar or a line is cut at the card edge', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: TEAM, stderr: '' }), [], [], [])
+  on('config.list', () => ({ value: [] }))
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(WIDE('desktop'))
+  const card = await ui.find({ key: 'card-lead' })
+  // The body is the card's second child, beside the crab; a flex item's automatic minimum would let an SVG's own width push past the border.
+  const body = (card?.children ?? [])[1] as { props: Record<string, unknown> } | undefined
+  expect(body?.props.minWidth).toBe(0)
+})
+
+test('an agent row wraps its model, cost and time onto a further line rather than cutting the note at the edge', async ($, on) => {
+  const clock = mock.clock(on)
+  stub(on, [], () => ({ exitCode: 0, stdout: GOOD, stderr: '' }), [], [], [])
+  await $.session.start(START)
+  await $.command.run(TOGGLE)
+  await clock.advance(2000)
+  const ui = await $.ui.mount(WIDE('desktop'))
+  const line = await ui.find({ key: 'line-lead:s1' })
+  // The meta is the row's second child, after the status glyph and the label; a cut would hide the reported note.
+  const meta = (line?.children ?? [])[1] as { props: Record<string, unknown> } | undefined
+  expect(meta?.props.wrap).toBe('wrap')
 })

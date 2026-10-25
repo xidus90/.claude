@@ -270,6 +270,9 @@ export function buildView(input: ViewInput): View {
 
 export type StatusItem = { status: Status; text: string }
 
+// The one line the band above the prompt shows: the agents by status, then the cost of the whole run.
+export const bandLine = (v: View): string => `Agents · ${v.counts} · ${v.overview.cost}`
+
 export const statusItems = (c: StatusCounts): StatusItem[] => [
   { status: 'running', text: `● läuft ${c.running}` }, { status: 'done', text: `✓ fertig ${c.done}` },
   { status: 'failed', text: `✗ gescheitert ${c.failed}` }, { status: 'aborted', text: `⊘ abgebrochen ${c.aborted}` },

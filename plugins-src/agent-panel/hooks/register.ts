@@ -3,7 +3,7 @@ import type { SessionInfo, Summary } from '../shared/summary.ts'
 import { blockBar, CARD_GAP, COST_H, costBarSvg, costParts, crabRaster, crabSvg, CRAB_PX, layoutOf, legendColors, paletteOf, RULE_H, ruleSvg, STATUS_COLOR, STATUS_H, statusParts, statusSvg, stripeSvg, tokenParts, type BarPart, type Palette } from './art.ts'
 import { EMPTY_LOG, onSpawn, type SpawnLog } from './open.ts'
 import { costumeOf } from './sprites.ts'
-import { buildView, countItems, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, isGone, listArgs, moreLine, OWN, parseResult, pickerOptions, reportedCost, rowLine, scriptArgs, sessionsOf, startError, statusItems, visibleRows, type Group, type LiveAgent, type Row, type StatusItem, type View } from './view.ts'
+import { bandLine, buildView, countItems, dirsOf, isOpen, toggle, detailLine, glyphColor, groupLine, isGone, listArgs, moreLine, OWN, parseResult, pickerOptions, reportedCost, rowLine, scriptArgs, sessionsOf, startError, statusItems, visibleRows, type Group, type LiveAgent, type Row, type StatusItem, type View } from './view.ts'
 
 const PANE = 'agent-panel'
 // Measured in docs/.superpowers/smoke/2026-10-09-agent-panel-probe.md.
@@ -102,6 +102,18 @@ async function openPane($: EngineInterface, byUser: boolean): Promise<void> {
   void refresh($)
 }
 
+// The command and the band's button share this: a shown pane closes, a hidden one opens.
+async function togglePane($: EngineInterface): Promise<void> {
+  if (await isShown($)) await $.ui.close({ id: PANE })
+  else await openPane($, true)
+}
+
+// The view the pane draws, also the band's: the picked session when one is picked.
+function viewOf(now: number): View {
+  const other = picked
+  return buildView({ summary, live, reportedCostUsd: reported, costIncludesAgents: REPORTED_COST_INCLUDES_AGENTS, now, error: error || goneNotice, foreign: other ? { title: other.title, isLive: other.isLive } : null })
+}
+
 // A pane listing that fails leaves what the opens and closes of this plugin say.
 async function isShown($: EngineInterface): Promise<boolean> {
   try {
@@ -170,8 +182,7 @@ export const register: Register = (on) => {
   })
 
   on('command.run', { command: 'agent-panel' }, async ($) => {
-    if (await isShown($)) await $.ui.close({ id: PANE })
-    else await openPane($, true)
+    await togglePane($)
     return {}
   })
 
@@ -198,6 +209,18 @@ export const register: Register = (on) => {
     return result
   })
 
+  // The band above the prompt: one line of counts and cost, and a button that opens or closes the pane.
+  // Nothing is shown before the panel opened once or while the session has no agent: the engine draws its own band then.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (!hasOpened || !summary?.agents.some((a) => a.kind === 'agent')) return next(e)
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const line = bandLine(viewOf(await $.clock.now()))
+    return Box({ key: 'agent-band', flexDirection: 'row', justifyContent: 'space-between', columnGap: 2, children: [
+      Text({ wrap: 'truncate-end', children: [line] }),
+      Button({ key: 'band-open', plain: true, label: isPaneOpen ? 'Panel schließen' : 'Panel öffnen', onPress: () => { void togglePane($).then(() => $.ui.invalidate('ui.render')) } }),
+    ] })
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const redraw = () => $.ui.invalidate('ui.render')
@@ -206,7 +229,7 @@ export const register: Register = (on) => {
     const other = picked
     try {
       now = await $.clock.now()
-      v = buildView({ summary, live, reportedCostUsd: reported, costIncludesAgents: REPORTED_COST_INCLUDES_AGENTS, now, error: error || goneNotice, foreign: other ? { title: other.title, isLive: other.isLive } : null })
+      v = viewOf(now)
     } catch (err) {
       return Text({ color: 'warning', children: [`⚠ ${err instanceof Error ? err.message : String(err)}`] })
     }
@@ -237,7 +260,7 @@ export const register: Register = (on) => {
             Text({ color: STATUS_COLOR[r.status], children: [`${r.glyph} `] }),
             Button({ key: `r-${r.key}`, plain: true, label: r.label, onPress: () => { toggle(expanded, r.key); redraw() } }),
           ] }),
-          Text({ dimColor: true, wrap: 'truncate-end', children: [r.meta] }),
+          Text({ dimColor: true, wrap: 'wrap', children: [r.meta] }),
         ] }),
         bar(`stripe-${r.key}`, 'Tokenverteilung', tokenParts(palette, r.shares), stripeSvg(palette, r.shares, 6), 6, cardBarCells),
         ...(expanded.has(r.key) ? [Text({ dimColor: true, children: [detailLine(r)] })] : []),
@@ -259,7 +282,8 @@ export const register: Register = (on) => {
         return Box({ key: `card-${g.key}`, flexDirection: 'row', borderStyle: 'round', paddingX: 1, columnGap: CARD_GAP,
           ...(isTerminal ? {} : { backgroundColor: palette.card, borderColor: palette.border }), children: [
           ...(isWide ? [crab(g)] : []),
-          Box({ flexDirection: 'column', flexGrow: 1, children: body }),
+          // No automatic minimum: an SVG bar counts its own full width, and the body would otherwise outgrow the card.
+          Box({ flexDirection: 'column', flexGrow: 1, minWidth: 0, children: body }),
         ] })
       }
       const keys = legendColors(palette)

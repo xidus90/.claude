@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildView, countItems, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, sharesOf, startError, statusItems, dirsOf, toggle, visibleRows, moreLine, sessionsOf, sessionLabel, listArgs, pickerOptions, isGone, type ViewInput } from '../hooks/view.ts'
+import { bandLine, buildView, countItems, detailLine, isOpen, fmtCost, fmtTime, fmtTokens, glyphColor, groupLine, parseResult, reportedCost, rowLine, scriptArgs, sharesOf, startError, statusItems, dirsOf, toggle, visibleRows, moreLine, sessionsOf, sessionLabel, listArgs, pickerOptions, isGone, type ViewInput } from '../hooks/view.ts'
 import type { AgentSummary, SessionInfo, Summary } from '../shared/summary.ts'
 
 const MIN = 60_000
@@ -20,6 +20,15 @@ function input(summary: Summary | null, p: Partial<ViewInput> = {}): ViewInput {
 }
 
 const team = (agents: AgentSummary[], generations = ['s1']): Summary => ({ runId: 'r1', generations, agents, unreadableLines: 0, problems: [] })
+
+test('the band line names the agents by status and the total cost, the lead left out of the count', () => {
+  const v = buildView(input(team([
+    lead({ costUsd: 0.9 }),
+    agent({ id: 'i1', costUsd: 0.5 }),
+    agent({ id: 'i2', costUsd: 0.3, end: 'error' }),
+  ]), { live: [{ id: 'i1', status: 'running' }] }))
+  assert.equal(bandLine(v), 'Agents · ● 1  ✓ 0  ✗ 1 · ≈ $1.70')
+})
 const plain = (agents: AgentSummary[]): Summary => ({ runId: null, generations: ['s1'], agents, unreadableLines: 0, problems: [] })
 
 test('formats cost, tokens and time', () => {
