@@ -9,7 +9,7 @@ function agent(p: Partial<AgentSummary>): AgentSummary {
   return {
     id: 'a', sessionId: 's1', kind: 'agent', name: 'impl-T1', role: 'implementer-backend', task: 'impl T1', model: 'claude-sonnet-5-5', effort: 'medium',
     tokens: { input: 1000, output: 2000, cacheRead: 0, cacheWrite5m: 0, cacheWrite1h: 0 },
-    costUsd: 0.5, unpriced: false, firstAt: 0, lastAt: MIN, end: 'answered', errorText: '', ...p,
+    costUsd: 0.5, unpriced: false, firstAt: 0, lastAt: MIN, end: 'answered', errorText: '', team: 'r1', ...p,
   }
 }
 
@@ -58,6 +58,22 @@ test('lists a plain session flat, under Lead and Agents, by start time', () => {
   assert.equal(v.title, 'Diese Sitzung')
   assert.deepEqual(v.groups.map((g) => g.title), ['Lead', 'Agents'])
   assert.deepEqual(v.groups[1]?.rows.map((r) => r.label), ['first', 'second'])
+})
+
+test('gathers the helpers of a team run, those without a team, into one group after the roles', () => {
+  const v = buildView(input(team([
+    lead({ costUsd: 0.9 }),
+    agent({ id: 'v1', role: 'verifier', task: 'verify T1 #1', costUsd: 2 }),
+    agent({ id: 'h1', name: 'claude-code-guide', role: 'claude-code-guide', task: 'claude-code-guide', team: '', costUsd: 0.1 }),
+    agent({ id: 'h2', name: 'general-purpose', role: 'general-purpose', task: 'general-purpose', team: '', costUsd: 0.2 }),
+  ])))
+  assert.deepEqual(v.groups.map((g) => g.title), ['Lead (Orchestrator)', 'verifier', 'Helfer'])
+  assert.deepEqual(v.groups[2]?.rows.map((r) => r.label), ['claude-code-guide', 'general-purpose'])
+})
+
+test('keeps the lead card on top of a team run, even behind a costlier running teammate', () => {
+  const v = buildView(input(team([lead({ costUsd: 0.1 }), agent({ id: 'i1', costUsd: 5 })]), { live: [{ id: 'i1', status: 'running' }] }))
+  assert.deepEqual(v.groups.map((g) => g.key), ['lead', 'implementer-backend'])
 })
 
 test('takes live status first, then the transcript', () => {
@@ -312,7 +328,7 @@ test('puts model, effort, cost and time into a row, and the note instead of cost
 
 test('adds the reported cost to the current lead row', () => {
   const v = buildView(input(plain([lead({ effort: 'xhigh' })]), { reportedCostUsd: 0.5 }))
-  assert.equal(v.groups[0]?.rows[0]?.meta, 'Opus 5.5 · xhigh · $0.50 · ⏱ 10:00 · gemeldet $0.50')
+  assert.equal(v.groups[0]?.rows[0]?.meta, 'Opus 5.5 · xhigh · ⏱ 10:00 · gemeldet $0.50')
 })
 
 test('counts statuses overall and per role, and gives each role its cost share', () => {

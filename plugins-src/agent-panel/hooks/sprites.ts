@@ -46,6 +46,7 @@ export const COSTUMES: Record<string, { label: string; props: readonly Pixel[] }
 const BY_ROLE: Record<string, string> = {
   lead: 'lead',
   orchestrator: 'lead',
+  implementer: 'backend',
   'implementer-backend': 'backend',
   'implementer-frontend': 'frontend',
   'implementer-infra': 'infra',

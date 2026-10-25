@@ -34,6 +34,7 @@ function toSummary(src: Source, sessionId: string, state: FileState, meta: Meta 
     kind: isLead ? 'lead' : 'agent',
     name,
     role: isLead ? 'lead' : roleOf(meta ?? {}),
+    team: meta?.teamName ?? '',
     task: isLead ? '' : taskOf(meta?.name ?? '') || name,
     model: state.model,
     effort: state.effort,

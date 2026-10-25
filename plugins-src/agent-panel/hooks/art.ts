@@ -101,7 +101,8 @@ const CRAB_CSS = '<style>.run .la{animation:st .5s steps(1) infinite}.run .lb{an
   '@keyframes bob{50%{transform:translateY(1px)}}@media (prefers-reduced-motion: reduce){.run *{animation:none!important}}</style>'
 
 // The desktop crab in CSS pixels, as in the draft.
-export const CRAB_PX = [36, 34] as const
+// One CSS pixel per grid cell: a whole multiple keeps every pixel the same width.
+export const CRAB_PX = [30, 28] as const
 
 export function crabSvg(costume: string, isRunning: boolean): string {
   const parts: Record<Part, string[]> = { bd: [], la: [], lb: [] }

@@ -112,7 +112,7 @@ test('counts a desktop pane as wide at any column count, since it lays out in pi
 })
 
 test('draws the crab at the size of the draft', () => {
-  assert.match(crabSvg('plain', false), /^<svg [^>]*width="36" height="34"/)
+  assert.match(crabSvg('plain', false), /^<svg [^>]*width="30" height="28"/)
 })
 
 test('animates a running crab only, and honours reduced motion', () => {

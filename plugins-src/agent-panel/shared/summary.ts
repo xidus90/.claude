@@ -20,6 +20,8 @@ export type AgentSummary = {
   model: string
   /** The reasoning effort the transcript names last; '' when none. */
   effort: string
+  /** The teamName from the agent's meta file; '' when it has none, so it is no member of a team. */
+  team: string
   tokens: TokenCounts
   costUsd: number
   /** True when some message used a model without a price; costUsd then covers only the priced ones. */

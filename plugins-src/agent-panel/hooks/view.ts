@@ -137,6 +137,9 @@ function tidy(value: unknown): string {
 const tidyAgent = (a: AgentSummary): AgentSummary =>
   ({ ...a, name: tidy(a.name), role: tidy(a.role), task: tidy(a.task), model: tidy(a.model), effort: tidy(a.effort), errorText: tidy(a.errorText) })
 
+// Group keys that are not a role: the lead, the plain session's agents, and a team run's helpers.
+const BUCKETS = new Set(['lead', 'agents', 'helpers'])
+
 export function buildView(input: ViewInput): View {
   // Every text the summary or the script brings in is cleaned here, so nothing below needs to be.
   const error = tidy(input.error)
@@ -178,19 +181,21 @@ export function buildView(input: ViewInput): View {
       detail: `in ${fmtTokens(a.tokens.input)} · out ${fmtTokens(a.tokens.output)} · read ${fmtTokens(a.tokens.cacheRead)} · write ${fmtTokens(a.tokens.cacheWrite5m)}/${fmtTokens(a.tokens.cacheWrite1h)}`,
       shares: sharesOf(a.tokens),
       // A failed or aborted row shows why instead of what it cost.
-      meta: [modelName(a.model), a.effort, ...(glyph === '✗' || glyph === '⊘' ? [noteOf(a, glyph)] : [a.unpriced ? '?' : fmtCost(a.costUsd), `⏱ ${time}`, reported])]
+      // A reported cost stands in for the computed one, so the row names the money once.
+      meta: [modelName(a.model), a.effort, ...(glyph === '✗' || glyph === '⊘' ? [noteOf(a, glyph)] : [...(reported ? [] : [a.unpriced ? '?' : fmtCost(a.costUsd)]), `⏱ ${time}`, reported])]
         .filter((p) => p !== '').join(' · '),
     }
   }
 
   const buckets = new Map<string, AgentSummary[]>()
   for (const a of s.agents) {
-    // A role may itself be named like the lead or the plain bucket, so it gets a key of its own.
-    const key = a.kind === 'lead' ? 'lead' : !isTeam ? 'agents' : a.role === 'lead' || a.role === 'agents' ? `role-${a.role}` : a.role
+    // A helper spawned without a team is no member of the run, so it goes to one bucket, not to a card of its own role.
+    // A role may itself be named like one of the buckets, so it gets a key of its own.
+    const key = a.kind === 'lead' ? 'lead' : !isTeam ? 'agents' : a.team === '' ? 'helpers' : BUCKETS.has(a.role) ? `role-${a.role}` : a.role
     buckets.set(key, [...(buckets.get(key) ?? []), a])
   }
   const groups: Group[] = [...buckets].map(([key, members]) => {
-    const role = key === 'lead' || key === 'agents' ? key : (members[0] as AgentSummary).role
+    const role = BUCKETS.has(key) ? key : (members[0] as AgentSummary).role
     // Leads stay in generation order; agents put the running ones first, then go by start.
     const sorted = key === 'lead'
       ? members
@@ -202,7 +207,7 @@ export function buildView(input: ViewInput): View {
     return {
       key,
       role,
-      title: key === 'lead' ? (isTeam ? 'Lead (Orchestrator)' : 'Lead') : key === 'agents' ? 'Agents' : role,
+      title: key === 'lead' ? (isTeam ? 'Lead (Orchestrator)' : 'Lead') : key === 'agents' ? 'Agents' : key === 'helpers' ? 'Helfer' : role,
       cost: fmtCost(costUsd),
       tokens: fmtTokens(members.reduce((n, a) => n + tokenSum(a.tokens), 0)),
       time: fmtTime(wallClock(members, glyphs, s.generations, input.now)),
@@ -213,10 +218,9 @@ export function buildView(input: ViewInput): View {
       rows: sorted.map(rowOf),
     }
   })
-  // Role cards go running first, then by cost; a plain session is just the lead, then its agents.
-  groups.sort((x, y) => isTeam
-    ? Number(y.isRunning) - Number(x.isRunning) || y.costUsd - x.costUsd
-    : Number(y.key === 'lead') - Number(x.key === 'lead'))
+  // The lead card stays on top; role cards go running first, then by cost. A plain session has one other card, the agents.
+  groups.sort((x, y) => Number(y.key === 'lead') - Number(x.key === 'lead')
+    || Number(y.isRunning) - Number(x.isRunning) || y.costUsd - x.costUsd)
 
   const total = s.agents.reduce((n, a) => n + a.costUsd, 0)
   for (const g of groups) g.costShare = total > 0 ? g.costUsd / total : 0
