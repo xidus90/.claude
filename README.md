@@ -193,6 +193,14 @@ Die Hooks des Laufs (`scripts/team-gate.py`) prüfen Task-Titel, Urteile und
 Torprotokolle und verweigern Push, Merge, `--no-verify` und Löschen mit Zwang.
 Sie gelten nur in Sitzungen, die der Starter öffnet.
 
+Das Security-Review läuft nach Risiko: je Task nur, wenn er eine
+Vertrauensgrenze berührt (Wächter- und Hook-Code, Prozessstart, Pfade,
+Konfiguration, Eingaben von außen). Der Plan sagt es je Task mit
+`**Security:** yes|no`; fehlt die Zeile, entscheidet der Orchestrator aus den
+Dateien, und ohne ausdrückliches `no` läuft das Review. Einmal am Ende prüft
+`[review:security] branch` den ganzen Feature-Zweig; ohne dieses Review
+schließt `[final]` nicht ab.
+
 **Tests:**
 
 ```

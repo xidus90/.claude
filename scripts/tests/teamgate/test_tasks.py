@@ -30,6 +30,8 @@ from teamgate_tasks import GateError, Title, parse_title
         ("[verify:rebase] T3", Title("verify", "rebase", "T3", None, False)),
         ("[verify:hunt] B4", Title("verify", "hunt", "B4", None, False)),
         ("[verify:final] F", Title("verify", "final", "F", None, False)),
+        ("[review:security] branch", Title("review", "security", "branch", None, False)),
+        ("[verify:review] branch", Title("verify", "review", "branch", None, False)),
         ("[merge] T3", Title("merge", None, "T3", None, False)),
         ("[hunt] R1.P2 HTTP handlers", Title("hunt", None, None, None, False)),
         ("[final]", Title("final", None, None, None, False)),
@@ -55,6 +57,13 @@ def test_every_form_of_spec_section_5_parses(subject: str, expected: Title) -> N
         "[verify:hunt] T1",  # a hunt finding is a B root
         "[verify:merge] T1",
         "[merge] R1",
+        # The branch-wide review is no root: it has a security review and its verify, nothing else.
+        "[review:code] branch",
+        "[verify:impl] branch",
+        "[verify:rebase] branch",
+        "[merge] branch",
+        "[impl:backend] branch Build",
+        "[fix:backend] branch Repair",
         "[hunt] R0.P1 zero",
         "[hunt] R1.P1",
         "[final] x",
@@ -87,11 +96,14 @@ def verify(w: World, tid: str, subject: str, head: str, verdict: str = "pass", f
     w.verdict(tid, body)
 
 
-def build(w: World, root: str = "T1", n: int = 1) -> tuple[Path, str]:
+NO_SECURITY = "Build it.\n\n**Security:** no — touches no trust boundary\n"
+
+
+def build(w: World, root: str = "T1", n: int = 1, description: str = "") -> tuple[Path, str]:
     """impl of a root up to a completed verify:impl; returns worktree and HEAD."""
     wt = w.worktree(root)
-    assert w.created(f"i{n}", f"[impl:backend] {root} Build it") == []
-    head = w.commit(wt)
+    assert w.created(f"i{n}", f"[impl:backend] {root} Build it", description) == []
+    head = w.commit(wt, f"{root}.txt")
     assert w.completed(f"i{n}", f"[impl:backend] {root} Build it") == []
     assert w.created(f"vi{n}", f"[verify:impl] {root}") == []
     w.gate_log(root, head, 0)
@@ -100,15 +112,22 @@ def build(w: World, root: str = "T1", n: int = 1) -> tuple[Path, str]:
     return wt, head
 
 
-def reviewed(w: World, root: str, head: str, tag: str = "1", verdict: str = "pass") -> None:
-    for sub in ("code", "security"):
+def reviewed(w: World, root: str, head: str, tag: str = "1", verdict: str = "pass", subs: tuple[str, ...] = ("code", "security")) -> None:
+    for sub in subs:
         assert w.created(f"r{sub}{tag}", f"[review:{sub}] {root}") == []
         review(w, f"r{sub}{tag}", f"[review:{sub}] {root}", head)
         assert w.completed(f"r{sub}{tag}", f"[review:{sub}] {root}") == []
     assert w.created(f"vr{tag}", f"[verify:review] {root}") == []
     findings = [settled(w, f"{root}-sec-F{tag}", "defect", "confirmed")] if verdict == "fail" else []
-    verify(w, f"vr{tag}", f"[verify:review] {root}", head, verdict, findings, judges=[f"rcode{tag}", f"rsecurity{tag}"])
+    verify(w, f"vr{tag}", f"[verify:review] {root}", head, verdict, findings, judges=[f"r{sub}{tag}" for sub in subs])
     assert w.completed(f"vr{tag}", f"[verify:review] {root}") == []
+
+
+def branch_reviewed(w: World, tag: str = "B", verdict: str = "pass") -> str:
+    """The one security review over the whole feature branch, at its current HEAD."""
+    head = w.feature_head
+    reviewed(w, "branch", head, tag=tag, verdict=verdict, subs=("security",))
+    return head
 
 
 def merged(w: World, root: str = "T1", n: int = 1) -> str:
@@ -141,7 +160,10 @@ def test_impl_records_the_worktree_head_as_base(world: World) -> None:
     world.worktree("T1")
     assert world.created("t1", "[impl:backend] T1 Build") == []
     event = world.register()[0]
-    assert event == {"event": "created", "gen": 1, "task_id": "t1", "subject": "[impl:backend] T1 Build", "base_head": world.feature_head}
+    assert event == {
+        "event": "created", "gen": 1, "task_id": "t1", "subject": "[impl:backend] T1 Build", "base_head": world.feature_head,
+        "security": True,
+    }
     assert "| T1 | impl | 1 | — |" in (world.run.dir / "status.md").read_text(encoding="utf-8")
 
 
@@ -389,11 +411,11 @@ def test_verify_review_names_both_latest_reviews_of_the_same_head(world: World) 
         world.completed(f"r{sub}", f"[review:{sub}] T1")
     world.created("vr", "[verify:review] T1")
     verify(world, "vr", "[verify:review] T1", head)
-    assert world.completed("vr", "[verify:review] T1") == ["verify:review needs judges: the two review task ids"]
+    assert world.completed("vr", "[verify:review] T1") == ["verify:review needs judges: the task ids of the reviews it judged"]
     verify(world, "vr", "[verify:review] T1", head, judges=["rcode", "other"])
     assert world.completed("vr", "[verify:review] T1") == ["judges must be the latest completed code and security review of this root"]
     verify(world, "vr", "[verify:review] T1", world.feature_head, judges=["rcode", "rsecurity"])
-    assert world.completed("vr", "[verify:review] T1") == ["both reviews and the verify:review must carry the same head"]
+    assert world.completed("vr", "[verify:review] T1") == ["every judged review and the verify:review must carry the same head"]
     verify(world, "vr", "[verify:review] T1", head, judges=["rcode", "rsecurity"])
     assert world.completed("vr", "[verify:review] T1") == []
 
@@ -408,6 +430,132 @@ def test_judges_of_an_older_round_are_refused(world: World) -> None:
     world.created("vr2", "[verify:review] T1")
     verify(world, "vr2", "[verify:review] T1", head, judges=["rcode1", "rsecurity1"])
     assert world.completed("vr2", "[verify:review] T1") == ["judges must be the latest completed code and security review of this root"]
+
+
+# --- security review by risk ------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("description", "security"),
+    [
+        (NO_SECURITY, False),
+        ("Security: no", False),
+        ("**security:**   No, decided from the Files list", False),
+        ("", True),  # no line: the review runs (fail-closed)
+        ("**Security:** yes", True),
+        ("**Security:** maybe", True),
+        ("Security: no\nSecurity: yes", True),  # contradicting lines keep the review
+        ("The plan says Security: no", True),  # only a line of its own counts
+    ],
+)
+def test_impl_records_whether_the_root_needs_a_security_review(world: World, description: str, security: bool) -> None:
+    world.worktree("T1")
+    assert world.created("i1", "[impl:backend] T1 Build", description) == []
+    assert world.register()[-1]["security"] is security
+
+
+def test_a_root_without_security_merges_with_the_code_review_alone(world: World) -> None:
+    _, head = build(world, description=NO_SECURITY)
+    reviewed(world, "T1", head, subs=("code",))
+    world.created("m", "[merge] T1")
+    sh(world.repo, "merge", "-q", "--ff-only", world.run.branch("T1"))
+    assert world.completed("m", "[merge] T1") == []
+
+
+def test_a_root_without_a_security_line_needs_both_reviews(world: World) -> None:
+    _, head = build(world)
+    world.created("rc", "[review:code] T1")
+    review(world, "rc", "[review:code] T1", head)
+    world.completed("rc", "[review:code] T1")
+    world.created("vr", "[verify:review] T1")
+    verify(world, "vr", "[verify:review] T1", head, judges=["rc"])
+    assert world.completed("vr", "[verify:review] T1") == ["judges must be the latest completed code and security review of this root"]
+
+
+def test_a_root_with_no_impl_or_fix_needs_both_reviews(world: World) -> None:
+    world.created("rc", "[review:code] T5")
+    review(world, "rc", "[review:code] T5", world.feature_head)
+    world.completed("rc", "[review:code] T5")
+    world.created("vr", "[verify:review] T5")
+    verify(world, "vr", "[verify:review] T5", world.feature_head, judges=["rc"])
+    assert "code and security" in world.completed("vr", "[verify:review] T5")[0]
+
+
+def test_a_fix_without_the_line_brings_the_security_review_back(world: World) -> None:
+    wt, _ = build(world, description=NO_SECURITY)
+    world.created("x1", "[fix:backend] T1 Touch the guard")  # no line: the root needs it from now on
+    head = world.commit(wt, "guard.txt")
+    world.completed("x1", "[fix:backend] T1 Touch the guard")
+    world.created("rc", "[review:code] T1")
+    review(world, "rc", "[review:code] T1", head)
+    world.completed("rc", "[review:code] T1")
+    world.created("vr", "[verify:review] T1")
+    verify(world, "vr", "[verify:review] T1", head, judges=["rc"])
+    assert "code and security" in world.completed("vr", "[verify:review] T1")[0]
+
+
+def test_a_security_review_that_ran_anyway_is_judged_too(world: World) -> None:
+    _, head = build(world, description=NO_SECURITY)
+    for sub in ("code", "security"):
+        world.created(f"r{sub}", f"[review:{sub}] T1")
+        review(world, f"r{sub}", f"[review:{sub}] T1", head)
+        world.completed(f"r{sub}", f"[review:{sub}] T1")
+    world.created("vr", "[verify:review] T1")
+    verify(world, "vr", "[verify:review] T1", head, judges=["rcode"])
+    assert world.completed("vr", "[verify:review] T1") == ["judges must be the latest completed code and security review of this root"]
+    verify(world, "vr", "[verify:review] T1", head, judges=["rcode", "rsecurity"])
+    assert world.completed("vr", "[verify:review] T1") == []
+
+
+def test_a_security_review_of_an_older_head_is_not_judged(world: World) -> None:
+    wt, old = build(world, description=NO_SECURITY)
+    world.created("rs", "[review:security] T1")
+    review(world, "rs", "[review:security] T1", old)
+    world.completed("rs", "[review:security] T1")
+    world.created("x1", "[fix:backend] T1 Repair", NO_SECURITY)
+    head = world.commit(wt, "b.txt")
+    world.completed("x1", "[fix:backend] T1 Repair")
+    reviewed(world, "T1", head, subs=("code",))  # judges only the code review of the new head
+
+
+def test_merge_refuses_a_green_that_lacks_a_security_review_the_root_now_needs(world: World) -> None:
+    _, head = build(world, description=NO_SECURITY)
+    reviewed(world, "T1", head, subs=("code",))
+    world.created("x1", "[fix:backend] T1 Touch the guard")  # asks for the review, then is dropped
+    tg.supersede(world.run, ["1:x1"])
+    world.created("m", "[merge] T1")
+    sh(world.repo, "merge", "-q", "--ff-only", world.run.branch("T1"))
+    assert world.completed("m", "[merge] T1") == [f"root T1 needs a security review of {head}"]
+
+
+def test_a_rebase_carries_the_pair_of_a_root_without_security(world: World) -> None:
+    wt, head = build(world, description=NO_SECURITY)
+    reviewed(world, "T1", head, subs=("code",))
+    world.commit(world.repo, "other.txt")
+    sh(wt, "rebase", "-q", FEATURE)
+    new = sh(wt, "rev-parse", "HEAD")
+    world.created("vrb", "[verify:rebase] T1")
+    world.gate_log("T1", new, 0)
+    rd = {"command": "git range-diff", "output_file": world.evidence("rd.txt")}
+    verify(world, "vrb", "[verify:rebase] T1", new, rebased_from=head, inherits=["rcode1", "vr1"], evidence=rd)
+    assert world.completed("vrb", "[verify:rebase] T1") == []
+    world.created("m", "[merge] T1")
+    sh(world.repo, "merge", "-q", "--ff-only", world.run.branch("T1"))
+    assert world.completed("m", "[merge] T1") == []
+
+
+def test_the_branch_review_judges_its_security_review_alone(world: World) -> None:
+    merged(world)
+    head = world.feature_head
+    world.created("rs", "[review:security] branch")
+    review(world, "rs", "[review:security] branch", head)
+    world.completed("rs", "[review:security] branch")
+    world.created("vr", "[verify:review] branch")
+    verify(world, "vr", "[verify:review] branch", head, judges=["rs", "rcodeT11"])
+    assert world.completed("vr", "[verify:review] branch") == ["judges must be the latest completed security review of this root"]
+    verify(world, "vr", "[verify:review] branch", head, judges=["rs"])
+    assert world.completed("vr", "[verify:review] branch") == []
+    assert "| branch |" not in (world.run.dir / "status.md").read_text(encoding="utf-8")  # no root of its own
 
 
 # --- merge -----------------------------------------------------------------
@@ -555,7 +703,7 @@ def test_a_rebase_verdict_needs_its_fields(world: World) -> None:
     verify(world, "vrb", "[verify:rebase] T1", head, inherits=["a"])
     assert world.completed("vrb", "[verify:rebase] T1") == [
         "verify:rebase needs rebased_from",
-        "a passing verify:rebase needs inherits: the three task ids of the trio",
+        "a passing verify:rebase needs inherits: the task ids of the reviews and the verify:review it carries forward",
         "verify:rebase needs the range-diff as evidence",
     ]
 
@@ -569,12 +717,58 @@ def test_green_at_without_history_is_false() -> None:
 
 def test_final_passes_once_every_root_is_merged(world: World) -> None:
     merged(world)
+    branch_reviewed(world)
+    world.created("f", "[final]")
+    assert world.completed("f", "[final]") == []
+
+
+def test_final_needs_the_branch_security_review(world: World) -> None:
+    merged(world)
+    world.created("f", "[final]")
+    assert world.completed("f", "[final]") == ["the feature branch has no completed [verify:review] branch"]
+
+
+def test_final_needs_a_branch_review_that_saw_every_task_merge(world: World) -> None:
+    merged(world, "T1")
+    early = branch_reviewed(world)  # before T2 reached the feature branch
+    merged(world, "T2", 2)
+    world.created("f", "[final]")
+    assert world.completed("f", "[final]") == [f"the branch security review at {early} does not contain team/{world.run.name}/T2"]
+    branch_reviewed(world, tag="B2")
+    assert world.completed("f", "[final]") == []
+
+
+def test_final_needs_a_branch_review_of_a_commit_on_the_feature_branch(world: World) -> None:
+    merged(world)
+    wt = world.run.worktree("branch")
+    sh(world.repo, "worktree", "add", "-q", "--detach", str(wt), FEATURE)
+    elsewhere = world.commit(wt, "elsewhere.txt")  # the reviewer's worktree, moved off the feature branch
+    reviewed(world, "branch", elsewhere, tag="B", subs=("security",))
+    world.created("f", "[final]")
+    assert world.completed("f", "[final]") == [f"the branch security review judged {elsewhere}, which is not on {FEATURE}"]
+
+
+def test_a_failing_branch_review_does_not_hold_final(world: World) -> None:
+    # Its confirmed findings become B roots, which [final] gates like any root.
+    merged(world)
+    branch_reviewed(world, verdict="fail")
+    world.created("f", "[final]")
+    assert world.completed("f", "[final]") == []
+
+
+def test_a_parked_task_root_need_not_be_in_the_branch_review(world: World) -> None:
+    merged(world, "T1")
+    world.worktree("T2")
+    world.created("i2", "[impl:backend] T2 Build")
+    assert ask(world, ("T2 is stuck. Park it?", "Park T2")) == []
+    branch_reviewed(world)
     world.created("f", "[final]")
     assert world.completed("f", "[final]") == []
 
 
 def test_final_lists_open_tasks(world: World) -> None:
     merged(world)
+    branch_reviewed(world)
     world.created("h", "[hunt] R1.P1 All")
     world.created("f", "[final]")
     assert world.completed("f", "[final]") == ["open task: [hunt] R1.P1 All (h, g1)"]
@@ -587,7 +781,11 @@ def test_a_deleted_review_is_closed_but_a_deleted_merge_is_not(world: World) -> 
     for tid in ("r", "m"):
         assert tg.on_post_task_update(world.run, {"tool_input": {"taskId": tid, "status": "deleted"}}) == []
     world.created("f", "[final]")
-    assert world.completed("f", "[final]") == ["open task: [merge] T1 (m, g1)", "root T1 has no completed [merge]"]
+    assert world.completed("f", "[final]") == [
+        "open task: [merge] T1 (m, g1)",
+        "root T1 has no completed [merge]",
+        "the feature branch has no completed [verify:review] branch",
+    ]
 
 
 def test_an_earlier_failing_verify_does_not_hold_final(world: World) -> None:
@@ -611,12 +809,14 @@ def test_an_earlier_failing_verify_does_not_hold_final(world: World) -> None:
     world.created("m", "[merge] T1")
     sh(world.repo, "merge", "-q", "--ff-only", world.run.branch("T1"))
     assert world.completed("m", "[merge] T1") == []
+    branch_reviewed(world)
     world.created("f", "[final]")
     assert world.completed("f", "[final]") == []
 
 
 def test_final_refuses_a_root_whose_latest_verify_failed(world: World) -> None:
     merged(world)
+    branch_reviewed(world)
     world.created("vf", "[verify:final] F")
     verify(world, "vf", "[verify:final] F", world.feature_head, "fail", [settled(world, "F-ver-F1", "defect", "confirmed")])
     world.completed("vf", "[verify:final] F")
@@ -631,11 +831,15 @@ def test_final_refuses_a_root_whose_latest_verify_failed(world: World) -> None:
 
 def test_final_refuses_a_merged_root_whose_branch_moved_away(world: World) -> None:
     merged(world)
+    reviewed_head = branch_reviewed(world)
     wt = world.run.worktree("T1")
     sh(wt, "reset", "-q", "--hard", "main")
     world.commit(wt, "after.txt")
     world.created("f", "[final]")
-    assert world.completed("f", "[final]") == [f"team/{world.run.name}/T1 is not an ancestor of {FEATURE}"]
+    assert world.completed("f", "[final]") == [
+        f"team/{world.run.name}/T1 is not an ancestor of {FEATURE}",
+        f"the branch security review at {reviewed_head} does not contain team/{world.run.name}/T1",
+    ]
 
 
 # --- cleanup ---------------------------------------------------------------
@@ -719,6 +923,7 @@ def test_a_second_fix_starts_from_the_current_head(world: World) -> None:
 
 def test_final_after_a_resume_counts_superseded_tasks_as_closed(world: World) -> None:
     merged(world)
+    branch_reviewed(world)
     world.created("h1", "[hunt] R1.P1 All")  # the lead dies with this hunt still open
     meta = json.loads((world.run.dir / "run.json").read_text(encoding="utf-8"))
     meta["generation"] = 2
@@ -928,6 +1133,7 @@ def test_a_parked_root_gets_no_new_tasks(world: World) -> None:
 
 def test_final_passes_once_the_failing_root_is_parked(world: World) -> None:
     merged(world, "T1")
+    branch_reviewed(world)
     wt = world.worktree("B3")
     world.created("x1", "[fix:backend] B3 Repair")
     head = world.commit(wt, "b3.txt")

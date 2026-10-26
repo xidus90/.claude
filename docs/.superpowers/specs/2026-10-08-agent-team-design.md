@@ -2,7 +2,8 @@
 
 Stand: 2026-10-08, dritte Fassung nach zwei verifier-Läufen.
 Status: Entwurf zur Freigabe. Die Entscheidungen des Nutzers stehen in
-Abschnitt 14.
+Abschnitt 14. Abschnitt 16 (2026-10-26) macht das Security-Review je Wurzel
+risikobasiert und ergänzt eines über den ganzen Zweig.
 
 ## 1. Ziel
 
@@ -915,3 +916,50 @@ es dabei.
     bricht ab).
 13. **Rückfragen der Teammates** laufen über `TaskUpdate` auf `pending` mit
     Notiz und `SendMessage` (Abschnitt 6); die Rümpfe sagen es so.
+
+## 16. Nachtrag: Security-Review nach Risiko (2026-10-26)
+
+Entschieden mit dem Nutzer beim Zeichnen der Ist-Graphen von loomux-Flows und
+Agent-Team. Ein `[review:security]` je Wurzel auf Opus/high kostet bei Doku-,
+Test- und Refactor-Tasks viel und findet dort wenig; Mängel, die erst aus
+mehreren Tasks zusammen entstehen, sieht kein Review einer einzelnen Wurzel.
+Der Nutzer wählte die Mischform. Sie ändert die Kette in Abschnitt 4, die
+Titel in Abschnitt 5 und die Tore in Abschnitt 6 so; die Abschnitte selbst
+bleiben als Stand vom 2026-10-08 stehen.
+
+1. **Je Wurzel nach Risiko.** Jeder Plan-Task trägt eine Zeile
+   `**Security:** yes|no` (Pflichtfeld im Skill `team-plan`). `yes`, wenn der
+   Task eine Vertrauensgrenze berührt: Wächter- oder Hook-Code, Prozessstart,
+   Pfadbehandlung, Konfiguration, Eingaben von außen. Fehlt die Zeile,
+   entscheidet der Orchestrator aus `**Files:**` und schreibt die Zeile samt
+   Grund in die Beschreibung des Tasks. Jedes `[impl]` und `[fix]` trägt die
+   Zeile in seiner Beschreibung; der Hook liest sie beim `TaskCreated` und
+   legt sie als `security` im Register ab.
+2. **Fail-closed.** Nur ein ausdrückliches `no` erspart einer Wurzel das
+   `[review:security]`. Keine Zeile, ein anderer Wert, widersprüchliche
+   Zeilen oder eine Registerzeile ohne das Feld gelten als `yes`. Sagt ein
+   `[impl]` oder `[fix]` einer Wurzel `yes`, braucht sie das Review von da an
+   in jeder Runde.
+3. **Ohne Security-Review** urteilt `[verify:review] W` über das Code-Review
+   allein; `judges` nennt dann eine Task-ID. Lief ein `[review:security] W`
+   trotzdem auf demselben HEAD, muss `verify:review` es mitprüfen. Ein
+   `verify:rebase` mit `pass` erbt dann ein Paar statt eines Trios.
+   `[merge] W` braucht nur die Reviews, die die Wurzel braucht; verlangt ein
+   später angelegtes `[impl]`/`[fix]` das Security-Review, das das grüne
+   Urteil nicht geprüft hat, lehnt der Hook ab.
+4. **Einmal am Ende.** Sobald alle `[merge] T<n>` erledigt sind, parallel zur
+   ersten Jagdrunde: `[review:security] branch` über den ganzen Diff des
+   Feature-Zweigs (`merge-base` mit dem Hauptzweig bis HEAD) in einem
+   zweiglosen Worktree `worktrees/branch`, danach `[verify:review] branch`.
+   `branch` ist keine Wurzel: kein `impl`, `fix`, `merge`, kein Parken, keine
+   Zeile in `status.md`. Ein bestätigter Fund ab `medium` wird eine Wurzel
+   `B<n>` wie ein Jagdfund, mit `**Security:** yes`.
+5. **`[final]`** braucht zusätzlich ein abgeschlossenes
+   `[verify:review] branch`, dessen `head` auf dem Feature-Zweig liegt und
+   jeden nicht geparkten Zweig `team/<lauf>/T<n>` enthält. Das Urteil darf
+   `fail` sein: Seine Funde sind dann `B<n>`-Wurzeln, und die hält `final`
+   wie jede Wurzel auf.
+
+Zeitgleich soll loomux denselben Ablauf als Flows mit mehreren LLMs
+nachbilden; Rollen und Titel bleiben deshalb, nur die Pflicht zum
+Security-Review je Wurzel fällt.

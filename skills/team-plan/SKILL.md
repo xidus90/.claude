@@ -33,8 +33,12 @@ outside world comes up, already during brainstorming.
 4. Ask the human to approve the spec (AskUserQuestion). No plan before that.
 5. Invoke `superpowers:writing-plans`. Save the plan to
    `docs/.superpowers/plans/<date>-<topic>.md`. Every task carries, next to
-   the fields of writing-plans, a line `**Domain:** infra|backend|frontend|ux`
-   and its `**Files:**` list. Dependencies between tasks are stated in the
+   the fields of writing-plans, a line `**Domain:** infra|backend|frontend|ux`,
+   a line `**Security:** yes|no` and its `**Files:**` list. `yes` when the
+   task touches a trust boundary — guard or hook code, process spawning, path
+   handling, config, external input; then the run gives it its own security
+   review. `no` saves that review; one security review over the whole branch
+   runs at the end either way. Dependencies between tasks are stated in the
    task ("Depends on Task 2").
 6. Have `verifier` try to refute the plan: code snippets against the code,
    expected test outcomes by hand, task order against the interfaces. Rework

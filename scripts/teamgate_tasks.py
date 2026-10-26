@@ -25,6 +25,10 @@ HEX = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 SEVERITIES = {"low", "medium", "high", "critical"}
 # A confirmed defect below medium goes to the report, not into a round (scope-and-cleanup spec 5.1).
 BLOCKING = {"medium", "high", "critical"}
+# The target of the one security review over the whole feature branch; never a root (spec section 16).
+BRANCH = "branch"
+# Only an explicit "no" spares a root its security review; no line, another value or a contradiction keeps it.
+SECURITY_LINE = re.compile(r"^\**Security:\**[ \t]*(yes|no)\b", re.IGNORECASE | re.MULTILINE)
 
 _FORMS: list[tuple[str, re.Pattern[str]]] = [
     ("impl", re.compile(rf"^\[impl:(?P<domain>{DOMAIN})\] (?P<root>{ROOT}) \S.*$")),
@@ -33,6 +37,8 @@ _FORMS: list[tuple[str, re.Pattern[str]]] = [
     ("verify", re.compile(rf"^\[verify:(?P<sub>impl|fix|review|rebase)\] (?P<root>{ROOT})$")),
     ("verify", re.compile(r"^\[verify:(?P<sub>hunt)\] (?P<root>B[1-9][0-9]*)$")),
     ("verify", re.compile(r"^\[verify:(?P<sub>final)\] (?P<root>F)$")),
+    ("review", re.compile(rf"^\[review:(?P<sub>security)\] (?P<root>{BRANCH})$")),
+    ("verify", re.compile(rf"^\[verify:(?P<sub>review)\] (?P<root>{BRANCH})$")),
     ("merge", re.compile(rf"^\[merge\] (?P<root>{ROOT})$")),
     ("hunt", re.compile(r"^\[hunt\] R[1-9][0-9]*\.P[1-9][0-9]* \S.*$")),
     ("final", re.compile(r"^\[final\]$")),
@@ -200,6 +206,7 @@ class Task:
     subject: str
     title: Title
     base_head: str | None
+    security: bool = True
     completed: bool = False
     superseded: bool = False
     deleted: bool = False
@@ -232,7 +239,9 @@ def tasks(events: list[JsonObj]) -> tuple[dict[tuple[int, str], Task], list[Task
             if title is None or not isinstance(subject, str):
                 raise GateError(f"register holds an unparsable subject: {subject!r}")
             base = e.get("base_head")
-            by_key[(gen, tid)] = Task(gen, tid, subject, title, base if isinstance(base, str) else None)
+            # A register line from before the field existed asked for the review.
+            security = e.get("security") is not False
+            by_key[(gen, tid)] = Task(gen, tid, subject, title, base if isinstance(base, str) else None, security)
             continue
         task = by_key.get((gen, tid))
         if task is None:
@@ -348,9 +357,9 @@ def check_verdict(run: Run, title: Title, task_id: str, subject: str, v: JsonObj
             errors.append("verify:rebase needs rebased_from")
         inherits = v.get("inherits")
         if v.get("verdict") == "pass" and (
-            not isinstance(inherits, list) or len(inherits) != 3 or not all(isinstance(x, str) for x in inherits)
+            not isinstance(inherits, list) or len(inherits) not in {2, 3} or not all(isinstance(x, str) for x in inherits)
         ):
-            errors.append("a passing verify:rebase needs inherits: the three task ids of the trio")
+            errors.append("a passing verify:rebase needs inherits: the task ids of the reviews and the verify:review it carries forward")
         if not _evidence_ok(run, v.get("evidence")):
             errors.append("verify:rebase needs the range-diff as evidence")
     return errors
@@ -410,20 +419,30 @@ def check_inherits(run: Run, title: Title, v: JsonObj, done: list[Task]) -> list
     return []
 
 
-def is_green(run: Run, done: list[Task], root: str, head: str) -> bool:
-    return green_at(judged(run, done, root, {"verify"}, {"review", "rebase"}), head)
+def needs_security(by_key: Mapping[tuple[int, str], Task], root: str) -> bool:
+    """A root skips its security review only while every impl/fix of it said `Security: no`."""
+    declared = [t.security for t in by_key.values() if t.title.root == root and t.title.kind in {"impl", "fix"}]
+    return not declared or any(declared)
 
 
-def check_judges(run: Run, title: Title, v: JsonObj, done: list[Task]) -> list[str]:
+def required_reviews(by_key: Mapping[tuple[int, str], Task], root: str) -> set[str]:
+    if root == BRANCH:
+        return {"security"}
+    return {"code", "security"} if needs_security(by_key, root) else {"code"}
+
+
+def check_judges(run: Run, title: Title, v: JsonObj, done: list[Task], by_key: Mapping[tuple[int, str], Task]) -> list[str]:
     judges = v.get("judges")
-    if not isinstance(judges, list) or len(judges) != 2 or not all(isinstance(j, str) for j in judges):
-        return ["verify:review needs judges: the two review task ids"]
+    if not isinstance(judges, list) or not judges or not all(isinstance(j, str) for j in judges):
+        return ["verify:review needs judges: the task ids of the reviews it judged"]
     reviews = judged(run, done, str(title.root), {"review"})
     latest = {r.task.title.sub: r for r in reviews}  # later completions overwrite earlier ones
-    if {latest[s].task.task_id for s in latest} != set(judges) or set(latest) != {"code", "security"}:
-        return ["judges must be the latest completed code and security review of this root"]
-    if any(latest[s].verdict.get("head") != v.get("head") for s in latest):
-        return ["both reviews and the verify:review must carry the same head"]
+    # The reviews the root needs, plus one that ran anyway on the same head: it was meant to be judged.
+    kinds = required_reviews(by_key, str(title.root)) | {s for s in latest if latest[s].verdict.get("head") == v.get("head")}
+    if not kinds <= set(latest) or {latest[s].task.task_id for s in kinds} != set(judges):
+        return [f"judges must be the latest completed {' and '.join(sorted(kinds))} review of this root"]
+    if any(latest[s].verdict.get("head") != v.get("head") for s in kinds):
+        return ["every judged review and the verify:review must carry the same head"]
     return []
 
 
@@ -500,6 +519,9 @@ def on_created(run: Run, payload: Payload) -> list[str]:
             if not wt.is_dir():
                 return [f"create the worktree {wt} before the {title.kind} task"]
             event["base_head"] = base_head_for(run, title, by_key, head_of(wt))
+            description = payload.get("task_description")
+            said = {m.lower() for m in SECURITY_LINE.findall(description if isinstance(description, str) else "")}
+            event["security"] = said != {"no"}
         if title.kind == "cleanup":
             finals = judged(run, done, "F", {"verify"}, {"final"})
             if not finals or finals[-1].verdict.get("verdict") != "pass":
@@ -560,24 +582,30 @@ def _completion_errors(
         if errors:
             return errors
         if title.kind == "verify" and title.sub == "review":
-            return check_judges(run, title, v, done)
+            return check_judges(run, title, v, done, by_key)
         if title.kind == "verify" and title.sub in {"impl", "fix", "rebase"}:
             errors = check_gate_log(run, title, v)
         if not errors and title.sub == "rebase" and v.get("verdict") == "pass":
             errors = check_inherits(run, title, v, done)
         return errors
     if title.kind == "merge":
-        return check_merge(run, root, done)
+        return check_merge(run, root, done, by_key)
     return check_final(run, task, by_key, done, parked_roots)
 
 
-def check_merge(run: Run, root: str, done: list[Task]) -> list[str]:
+def check_merge(run: Run, root: str, done: list[Task], by_key: Mapping[tuple[int, str], Task]) -> list[str]:
     branch, feature = run.branch(root), run.feature
     if git(run.repo, "merge-base", "--is-ancestor", branch, feature).returncode != 0:
         return [f"{branch} is not an ancestor of {feature}"]
     head = git(run.repo, "rev-parse", branch).stdout.strip()
-    if not is_green(run, done, root, head):
+    history = judged(run, done, root, {"verify"}, {"review", "rebase"})
+    if not green_at(history, head):
         return [f"root {root} is not green for {head}"]
+    # An impl/fix created after the green verdict may have asked for a review that verdict did not judge.
+    carried = _trio(history[-1])
+    reviewed_subs = {t.title.sub for t in done if t.title.kind == "review" and t.title.root == root and t.task_id in carried}
+    if missing := required_reviews(by_key, root) - reviewed_subs:
+        return [f"root {root} needs a {' and '.join(sorted(missing))} review of {head}"]
     # A failed verify:rebase sends the root back through the reviews only, so its green gate log
     # counts; a failed verify:impl/fix confirmed a defect and does not.
     gates = judged(run, done, root, {"verify"}, {"impl", "fix", "rebase"})
@@ -618,7 +646,27 @@ def check_final(
         verdicts = judged(run, done, root, {"verify"})
         if verdicts and verdicts[-1].verdict.get("verdict") == "fail":
             errors.append(f"the latest verify verdict of root {root} is fail")
-    return errors
+    return errors + check_branch_review(run, by_key, done, parked_roots)
+
+
+def check_branch_review(
+    run: Run, by_key: dict[tuple[int, str], Task], done: list[Task], parked_roots: Collection[str]
+) -> list[str]:
+    """The security review over the whole branch ran after every plan task was merged (spec section 16).
+
+    Its verdict may fail: confirmed findings become B roots, which check_final gates like any root."""
+    reviews = judged(run, done, BRANCH, {"verify"}, {"review"})
+    if not reviews:
+        return [f"the feature branch has no completed [verify:review] {BRANCH}"]
+    head, feature = str(reviews[-1].verdict.get("head")), run.feature
+    if git(run.repo, "merge-base", "--is-ancestor", head, feature).returncode != 0:
+        return [f"the branch security review judged {head}, which is not on {feature}"]
+    return [
+        f"the branch security review at {head} does not contain {run.branch(root)}"
+        for root in roots(by_key)
+        if root.startswith("T") and root not in parked_roots
+        and git(run.repo, "merge-base", "--is-ancestor", run.branch(root), head).returncode != 0
+    ]
 
 
 def check_cleanup(run: Run, payload: Payload) -> list[str]:

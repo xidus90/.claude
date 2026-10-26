@@ -29,15 +29,25 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
   `[fix:<domain>:conflict] W <title>`, `[review:code] W`,
   `[review:security] W`, `[verify:impl|fix|review|rebase] W`,
   `[verify:hunt] B<n>`, `[verify:final] F`, `[merge] W`,
-  `[hunt] R<r>.P<n> <partition>`, `[final]`, `[cleanup]`. `<domain>` is
-  `infra`, `backend`, `frontend` or `ux`.
+  `[hunt] R<r>.P<n> <partition>`, `[review:security] branch`,
+  `[verify:review] branch`, `[final]`, `[cleanup]`. `<domain>` is
+  `infra`, `backend`, `frontend` or `ux`. `branch` is the target of the one
+  security review over the whole feature branch, not a root.
+- **Security line**: the description of every `[impl]` and `[fix]` carries a
+  line `**Security:** yes` or `**Security:** no`. Only `no` spares W its
+  `[review:security] W`; a missing line counts as `yes`, and once any impl or
+  fix of W says `yes` (or nothing), W needs the security review from then on.
+  A root needs it when it touches a trust boundary: guard or hook code,
+  process spawning, path handling, config, external input.
 - **Verdicts and evidence**: your start prompt names the verdict rules
   (`verdicts.md`). Read them once at the start; you need them to read verdicts
   and to judge what the hooks will refuse. Pass that path on in every spawn
   prompt of a reviewer, verifier or bug hunter.
-- **Green**: the latest `verify:review` of W passes, names both reviews of
-  this round, and all three carry the HEAD of `team/<run>/W` — or the latest
-  passing `verify:rebase` carries that HEAD and inherits such a trio.
+- **The reviews W needs**: `[review:code] W`, plus `[review:security] W`
+  unless its Security line says `no`.
+- **Green**: the latest `verify:review` of W passes, names the reviews W
+  needs of this round, and they all carry the HEAD of `team/<run>/W` — or the
+  latest passing `verify:rebase` carries that HEAD and inherits such a set.
 - **Mergeable**: green, and a green gate log for that HEAD exists from a
   passing `verify:impl` or `verify:fix`, or from a `verify:rebase` (pass or
   fail).
@@ -71,15 +81,19 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
    so or when their Files lists share a path; B starts only after `[merge] A`.
    For each task that is ready: create its worktree first, then
    `[impl:<domain>] TN <task title>` and `[merge] TN` (blocked by the impl).
+   Copy the task's `**Security:**` line into the impl's description. If the
+   plan has none, decide from its `**Files:**` and write the line with the
+   reason, e.g. `**Security:** no — decided from Files: docs and tests only`.
 3. **Chain of a root W**, in this order, each step a task and a teammate:
-   - `[impl]` or `[fix]` → `implementer`.
+   - `[impl]` or `[fix]` → `implementer`. A `[fix]` repeats the Security line
+     of W; set it to `yes` if the fix reaches a trust boundary.
    - `[verify:impl]` or `[verify:fix]` → `verifier`. Fail → new
      `[fix:<domain>] W` with the confirmed findings of `medium` or worse and
      the refuted claims in its description; confirmed `low` findings go to the
      report, never into a fix.
-   - Pass → `[review:code] W` → `code-reviewer` and `[review:security] W` →
-     `security-reviewer`, in parallel.
-   - Both done → `[verify:review] W` → `verifier`, naming both review task ids.
+   - Pass → `[review:code] W` → `code-reviewer` and, if W needs it,
+     `[review:security] W` → `security-reviewer`, in parallel.
+   - All done → `[verify:review] W` → `verifier`, naming the review task ids.
      A failing `[verify:review] W` → `[fix:<domain>] W` with only its
      confirmed findings of `medium` or worse; a passing one → the root is green.
      Confirmed `low` findings go to the report in both cases.
@@ -99,8 +113,8 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
      Conflict → `git -C <worktree> rebase --abort`, then
      `[fix:<domain>:conflict] W` and the chain from verify:fix on.
      No conflict → `[verify:rebase] W`; if it passes with `inherits`, go back
-     to the merge check; if it fails with a green gate log, run both reviews
-     and verify:review again; if its gate log is red, `[fix:<domain>] W` and
+     to the merge check; if it fails with a green gate log, run the reviews W
+     needs and verify:review again; if its gate log is red, `[fix:<domain>] W` and
      the chain from verify:fix on.
      Any other rebase error → ask the human.
    - Then complete `[merge] W`. A dependent task's worktree is created only now.
@@ -117,7 +131,22 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
    Stop hunting after two rounds in a row without a new confirmed finding of
    `medium` or worse, or after five rounds — then ask the human whether to go
    on.
-6. **Final.** Run the command in `.claude/team-gate` on the feature branch in
+   A `B<n>` from a hunt says `**Security:** yes` when its defect is a
+   security hole or its fix reaches a trust boundary.
+6. **Branch security review**, once, as soon as every `[merge] T<n>` is
+   complete, alongside the first hunt round:
+   `git worktree add --detach "$TEAM_RUN_DIR/worktrees/branch" <feature>`,
+   then `[review:security] branch` → `security-reviewer`, and when it is done
+   `[verify:review] branch` → `verifier`, naming that review task id. Name the
+   base in both spawn prompts: `git merge-base <feature> <main branch>`; the
+   review covers `<base>..HEAD` of the worktree. A failing
+   `[verify:review] branch` turns each confirmed finding of `medium` or worse
+   into a root like a confirmed hunt finding: next free `B<n>`, worktree,
+   `[fix:<domain>] B<n> <claim>` with `**Security:** yes`, `[merge] B<n>`,
+   and the chain. A confirmed `low` finding goes to the report. `[final]`
+   needs a completed `[verify:review] branch` whose HEAD contains every
+   unparked `team/<run>/T<n>`; if you rerun it, the latest counts.
+7. **Final.** Run the command in `.claude/team-gate` on the feature branch in
    the main tree; it must exit 0. Tick the plan checkboxes, write the report to
    `docs/.superpowers/reports/<date>-<plan name>.md` (roots, rounds, verdicts,
    findings, bugs, costs if known, anything left open), commit both, create
@@ -131,7 +160,7 @@ are Bash; in PowerShell the run folder is `$env:TEAM_RUN_DIR`.
    of a root, ask the human with a `Park <root>` option before anything else.
    The report also has `## Deferred findings (low)`: one line per defect a
    verify verdict confirmed as `low`, with its id, root and claim.
-7. **Cleanup**, once the latest `[verify:final] F` passes. Run
+8. **Cleanup**, once the latest `[verify:final] F` passes. Run
    `git branch --no-merged <feature> --list "team/<run>/*"` and put its output
    into the description of `[cleanup]` (expected: only branches of parked
    roots; anything else listed goes into the report). Then run, in the main
