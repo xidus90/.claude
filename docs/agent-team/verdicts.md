@@ -75,13 +75,19 @@ confirms; its grade is the one that counts.
   `confirmed` or `refuted`, each with `evidence` (`command` plus an
   `output_file` that exists under the run folder and is not empty). No probe,
   no `confirmed`.
-- `verify:review` names in `judges` the two review tasks it judged: the latest
-  completed `review:code` and `review:security` of the root, both with the
-  same `head` as the verify verdict.
+- `verify:review` names in `judges` the review tasks it judged, all with the
+  same `head` as the verify verdict: the latest completed `review:code` of the
+  root, and its latest `review:security` unless every `[impl]`/`[fix]` of the
+  root says `**Security:** no` in its description. A `review:security` that
+  ran on that same head anyway is judged too.
+- `verify:review branch` judges the one `review:security branch`: the whole
+  feature branch from the base the lead names to the HEAD of
+  `$TEAM_RUN_DIR/worktrees/branch`. Its findings carry ids `branch-sec-F<k>`.
+  A confirmed finding of `medium` or worse fails it and becomes a `B<n>` root.
 - `verify:rebase` adds `rebased_from` (the HEAD before the rebase) and
   `evidence` with the `git range-diff` output. When the own commits are
   unchanged and the gate is green it passes and adds `inherits`: the task ids
-  of the trio that was green before (review:code, review:security,
+  of the set that was green before (review:code, review:security if it ran,
   verify:review). When the commits changed, it refutes the claim "own commits
   unchanged" and fails; then the reviews run again.
 - `[merge] W` completes only when, besides being green, the merged HEAD has a
@@ -95,7 +101,10 @@ confirms; its grade is the one that counts.
 - A red gate log never goes with `pass`. With `fail` it is right when a claim
   "gate is green" is `refuted` and carries the gate log as its `output_file`.
 - Finding ids name target and role: `T3-code-F1`, `T3-sec-F1`, `T3-ver-F1`,
-  `R1-P2-F4`. Bug numbers `B<n>` are the lead's to give.
+  `R1-P2-F4`, `branch-sec-F2`. Bug numbers `B<n>` are the lead's to give.
+- `[final]` completes only after a `verify:review branch` (either verdict)
+  whose `head` is on the feature branch and contains every unparked `T<n>`
+  branch.
 - A parked root (an event `{"event": "parked", "root": …, "question": …}` in
   `tasks.jsonl`) has no `[merge]` and needs none. Its open tasks were closed
   when it was parked; the hook refuses new ones. `[verify:final]` checks that

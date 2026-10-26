@@ -32,10 +32,13 @@ one sentence in the `claim`. Never grade an exploitable security hole `low`. You
   `git checkout HEAD -- <files>`. `<base>` is the commit the lead names.
   Then run the gate — the command in `.claude/team-gate` — in the worktree and
   write the gate log.
-- `[verify:review] W`: every finding of the two reviews named by the lead.
-  Confirm a defect only with a probe that shows it (a failing test, a command
-  output); refute what the code shows to be fine. Name both review task ids in
-  `judges`.
+- `[verify:review] W`: every finding of the reviews named by the lead — the
+  code review, and the security review when W had one. Confirm a defect only
+  with a probe that shows it (a failing test, a command output); refute what
+  the code shows to be fine. Name every judged review task id in `judges`.
+- `[verify:review] branch`: the same for the one security review over the
+  whole feature branch, probed in `$TEAM_RUN_DIR/worktrees/branch`; `judges`
+  names that review alone.
 - `[verify:rebase] W`: run the gate on the new HEAD and
   `git range-diff <feature before>..<old head> <feature>..<new head>`. Own
   commits unchanged and gate green → pass with `inherits`; otherwise refute
